@@ -120,9 +120,9 @@ class Single(object):
             self.epoch = epoch
 
             # Train and Test
-            train_history = self.train(train_loader=loaders['train'], adjusted=False)
-            validation_history = self.evaluate(eval_loader=loaders['validation'], adjusted=False)
-            test_history = self.evaluate(eval_loader=loaders['test'], adjusted=False)
+            train_history = self.train(data_loader=loaders['train'], adjusted=False)
+            validation_history = self.evaluate(data_loader=loaders['validation'], adjusted=False)
+            test_history = self.evaluate(data_loader=loaders['test'], adjusted=False)
 
             # Logging
             epoch_history = collections.defaultdict(dict)
@@ -170,17 +170,33 @@ class Single(object):
         ckpt = os.path.join(self.checkpoint_dir, f"ckpt.last.pth.tar")
         self.save_checkpoint(ckpt, epoch=epoch)
 
-        # adjusted evaluation
+        # adjusted evaluation (last)
         validation_history = self.evaluate(loaders['validation'], adjusted=True)
         test_history = self.evaluate(loaders['test'], adjusted=True)
 
         last_history = collections.defaultdict(dict)
         for k, v in validation_history.items():
-            last_history[f'adjusted/validation/{k}'] = v
+            last_history[f'adjusted-last/validation/{k}'] = v
         for k, v in test_history.items():
-            last_history[f'adjusted/test/{k}'] = v
+            last_history[f'adjusted-last/test/{k}'] = v
         if self.enable_wandb:
             wandb.log(last_history)
+
+        # adjusted evaluation (best)
+        ckpt = os.path.join(self.checkpoint_dir, f"ckpt.best.pth.tar")
+        for k, v in self.networks.items():
+            v.load_weights_from_checkpoint(path=ckpt, key=k)
+
+        validation_history = self.evaluate(loaders['validation'], adjusted=True)
+        test_history = self.evaluate(loaders['test'], adjusted=True)
+
+        best_history = collections.defaultdict(dict)
+        for k, v in validation_history.items():
+            best_history[f'adjusted-best/validation/{k}'] = v
+        for k, v in test_history.items():
+            best_history[f'adjusted-best/test/{k}'] = v
+        if self.enable_wandb:
+            wandb.log(best_history)
 
     def train(self, data_loader, adjusted=False):
 
@@ -269,7 +285,7 @@ class Single(object):
                 with torch.cuda.amp.autocast(self.mixed_precision):
                     # input data
                     x = torch.concat(batch[f'{self.data_type}']).float().to(self.local_rank)
-                    y = batch['y'].long().repeat(self.config.num_slices).to(self.local_rank)
+                    y = batch['y'].long().repeat(self.test_num_slices).to(self.local_rank)
 
                     # hidden representations
                     h = self.networks['encoder'](x)
@@ -286,9 +302,9 @@ class Single(object):
                     pg.update(task, advance=1.)
                     pg.refresh()
 
-                y_true.append(y.chunk(self.config.num_slices)[0].long())
+                y_true.append(y.chunk(self.test_num_slices)[0].long())
                 num_classes = logits.shape[-1]
-                logits = logits.reshape(self.config.num_slices, -1, num_classes).mean(0)
+                logits = logits.reshape(self.test_num_slices, -1, num_classes).mean(0)
                 y_pred.append(logits)
 
         result = {k: v.mean().item() for k, v in result.items()}

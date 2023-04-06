@@ -10,13 +10,12 @@ import wandb
 import torch
 import torch.nn as nn
 
-from configs.single import SingleConfig
-from tasks.single import Single
+from configs.slice.single import SliceSingleConfig
+from tasks.slice.single import Single
 
-from dataset.brain import BrainProcessor, Brain
-from dataset.transforms import make_mri_transforms, make_pet_transforms
-
-from models.build import build_network_single
+from datasets.brain import BrainProcessor, BrainMRI, BrainPET
+from datasets.slice.transforms import make_mri_transforms, make_pet_transforms
+from models.slice.build import build_networks
 
 from utils.logging import get_rich_logger
 from utils.gpu import set_gpu
@@ -25,8 +24,8 @@ from utils.gpu import set_gpu
 def main():
     """Main function for single/distributed linear classification."""
 
-    config = SingleConfig.parse_arguments()
-    config.task = 'Single-' + config.data_type.upper()
+    config = SliceSingleConfig.parse_arguments()
+    config.task = 'Single-' + config.data_type.upper() + '-' + config.pet_type.upper()
 
     set_gpu(config)
     num_gpus_per_node = len(config.gpus)
@@ -68,16 +67,26 @@ def main_worker(local_rank: int, config: object):
     if config.enable_wandb:
         wandb.init(
             name=f'{config.task} : {config.hash}',
-            project='IMFi',
+            project='incomplete-kd',
             config=config.__dict__,
             settings=wandb.Settings(code_dir=".")
         )
 
     # Transform
     if config.data_type == 'mri':
-        train_transform, test_transform = make_mri_transforms(image_size=config.image_size)
+        train_transform, test_transform = make_mri_transforms(
+            image_size=config.image_size, intensity=config.intensity, crop_size=config.crop_size,
+            rotate=config.rotate, flip=config.flip, affine=config.affine, blur_std=config.blur_std,
+            train_slices=config.train_slices, num_slices=config.num_slices, slice_range=config.slice_range,
+            prob=config.prob
+        )
     elif config.data_type == 'pet':
-        train_transform, test_transform = make_pet_transforms(image_size=config.image_size)
+        train_transform, test_transform = make_pet_transforms(
+            image_size=config.image_size, intensity=config.intensity, crop_size=config.crop_size,
+            rotate=config.rotate, flip=config.flip, affine=config.affine, blur_std=config.blur_std,
+            train_slices=config.train_slices, num_slices=config.num_slices, slice_range=config.slice_range,
+            prob=config.prob
+        )
     else:
         raise ValueError('data_type must be either mri or pet')
 
@@ -85,44 +94,33 @@ def main_worker(local_rank: int, config: object):
     processor = BrainProcessor(root=config.root,
                                data_file=config.data_file,
                                pet_type=config.pet_type,
+                               mci_only=config.mci_only,
                                random_state=config.random_state)
     datasets_dict = processor.process(validation_size=config.validation_size,
                                       test_size=config.test_size,
                                       missing_rate=config.missing_rate)
 
     if config.data_type == 'mri':
-        train_set = Brain(dataset=datasets_dict['mri_total_train'],
-                          data_type='mri',
-                          mri_transform=train_transform,
-                          pet_transform=None)
-        validation_set = Brain(dataset=datasets_dict['mri_pet_complete_validation'],
-                               data_type='mri',
-                               mri_transform=train_transform,
-                               pet_transform=None)
-        test_set = Brain(dataset=datasets_dict['mri_pet_complete_test'],
-                         data_type='mri',
-                         mri_transform=test_transform,
-                         pet_transform=None)
+        train_set = BrainMRI(dataset=datasets_dict['mri_total_train'], mri_transform=train_transform)
+        validation_set = BrainMRI(dataset=datasets_dict['mri_pet_complete_validation'], mri_transform=test_transform)
+        test_set = BrainMRI(dataset=datasets_dict['mri_pet_complete_test'], mri_transform=test_transform)
     elif config.data_type == 'pet':
-        train_set = Brain(dataset=datasets_dict['mri_pet_complete_train'],
-                          data_type='pet',
-                          mri_transform=None,
-                          pet_transform=train_transform)
-        validation_set = Brain(dataset=datasets_dict['mri_pet_complete_validation'],
-                               data_type='pet',
-                               mri_transform=None,
-                               pet_transform=train_transform)
-        test_set = Brain(dataset=datasets_dict['mri_pet_complete_test'],
-                         data_type='pet',
-                         mri_transform=None,
-                         pet_transform=test_transform)
+        train_set = BrainPET(dataset=datasets_dict['mri_pet_complete_train'], pet_transform=train_transform)
+        validation_set = BrainPET(dataset=datasets_dict['mri_pet_complete_validation'], pet_transform=test_transform)
+        test_set = BrainPET(dataset=datasets_dict['mri_pet_complete_test'], pet_transform=test_transform)
     else:
         raise ValueError('data_type must be either mri or pet')
 
     datasets = {'train': train_set, 'validation': validation_set, 'test': test_set}
 
-    # Networks: mri_encoder, mri_projector, classifier
-    networks = build_network_single(config=config)
+    # Networks
+    networks = build_networks(config)
+    if config.data_type == 'mri':
+        networks = {'encoder': networks['encoder_mri'], 'classifier': networks['classifier_mri']}
+    elif config.data_type == 'pet':
+        networks = {'encoder': networks['encoder_pet'], 'classifier': networks['classifier_pet']}
+    else:
+        raise ValueError
 
     # Cross Entropy Loss Function
     class_weight = None
@@ -143,12 +141,12 @@ def main_worker(local_rank: int, config: object):
         cosine_min_lr=config.cosine_min_lr,
         epochs=config.epochs,
         batch_size=config.batch_size,
-        accumulate=config.accumulate,
         num_workers=config.num_workers,
         distributed=config.distributed,
         local_rank=local_rank,
         mixed_precision=config.mixed_precision,
-        enable_wandb=config.enable_wandb
+        enable_wandb=config.enable_wandb,
+        config=config
     )
 
     # Train & evaluate
