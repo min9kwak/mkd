@@ -18,7 +18,7 @@ class Multi(object):
     # networks
     # teacher: multi (MRI+PET)  --> PET for Multi
     # student:                  --> MRI for Multi
-    network_names = ['encoder_t', 'classifier_t', 'encoder_s']
+    network_names = ['encoder_t', 'encoder_s', 'classifier']
 
     def __init__(self,
                  networks: dict):
@@ -43,7 +43,7 @@ class Multi(object):
                 num_workers: int = 4,
                 distributed: bool = False,
                 local_rank: int = 0,
-                common_type: str = 'concat',
+                add_type: str = 'concat',
                 mixed_precision: bool = True,
                 enable_wandb: bool = True,
                 **kwargs):
@@ -56,8 +56,8 @@ class Multi(object):
         self.num_workers = num_workers
         self.distributed = distributed
         self.local_rank = local_rank
-        assert common_type in ['concat', 'add']
-        self.common_type = common_type
+        assert add_type in ['concat', 'add']
+        self.add_type = add_type
         self.mixed_precision = mixed_precision
         self.enable_wandb = enable_wandb
         self.config = kwargs.get('config', None)
@@ -78,8 +78,8 @@ class Multi(object):
 
         # Optimization setting
         self.optimizer = get_optimizer(params=[{'params': self.networks['encoder_t'].parameters()},
-                                               {'params': self.networks['classifier_t'].parameters()},
-                                               {'params': self.networks['encoder_s'].parameters()}],
+                                               {'params': self.networks['encoder_s'].parameters()},
+                                               {'params': self.networks['classifier'].parameters()}],
                                        name=optimizer,
                                        lr=learning_rate,
                                        weight_decay=weight_decay)
@@ -146,7 +146,7 @@ class Multi(object):
                 wandb.log(epoch_history)
 
             # Save best model checkpoint
-            eval_loss = test_history['cross_entropy']
+            eval_loss = test_history['total_loss']
             if eval_loss <= best_eval_loss:
                 best_eval_loss = eval_loss
                 best_epoch = epoch
@@ -167,17 +167,33 @@ class Multi(object):
         ckpt = os.path.join(self.checkpoint_dir, f"ckpt.last.pth.tar")
         self.save_checkpoint(ckpt, epoch=epoch)
 
-        # adjusted evaluation
+        # adjusted evaluation (last)
         validation_history = self.evaluate(loaders['validation'], adjusted=True)
         test_history = self.evaluate(loaders['test'], adjusted=True)
 
         last_history = collections.defaultdict(dict)
         for k, v in validation_history.items():
-            last_history[f'adjusted/validation/{k}'] = v
+            last_history[f'adjusted-last/validation/{k}'] = v
         for k, v in test_history.items():
-            last_history[f'adjusted/test/{k}'] = v
+            last_history[f'adjusted-last/test/{k}'] = v
         if self.enable_wandb:
             wandb.log(last_history)
+
+        # adjusted evaluation (best)
+        ckpt = os.path.join(self.checkpoint_dir, f"ckpt.best.pth.tar")
+        for k, v in self.networks.items():
+            v.load_weights_from_checkpoint(path=ckpt, key=k)
+
+        validation_history = self.evaluate(loaders['validation'], adjusted=True)
+        test_history = self.evaluate(loaders['test'], adjusted=True)
+
+        best_history = collections.defaultdict(dict)
+        for k, v in validation_history.items():
+            best_history[f'adjusted-best/validation/{k}'] = v
+        for k, v in test_history.items():
+            best_history[f'adjusted-best/test/{k}'] = v
+        if self.enable_wandb:
+            wandb.log(best_history)
 
     def train(self, data_loader, adjusted=False):
 
@@ -205,12 +221,12 @@ class Multi(object):
                     # hidden representations
                     h_t = self.networks['encoder_t'](x_t)
                     h_s = self.networks['encoder_s'](x_s)
-                    if self.common_type == 'concat':
+                    if self.add_type == 'concat':
                         h_common = torch.concat([h_t, h_s], dim=1)
                     else:
                         h_common = h_t + h_s
 
-                    logits = self.networks['classifier_t'](h_common)
+                    logits = self.networks['classifier'](h_common)
                     loss_ce = self.loss_function_ce(logits, y)
                     loss = loss_ce
 
@@ -280,12 +296,12 @@ class Multi(object):
                     # hidden representations
                     h_t = self.networks['encoder_t'](x_t)
                     h_s = self.networks['encoder_s'](x_s)
-                    if self.common_type == 'concat':
+                    if self.add_type == 'concat':
                         h_common = torch.concat([h_t, h_s], dim=1)
                     else:
                         h_common = h_t + h_s
 
-                    logits = self.networks['classifier_t'](h_common)
+                    logits = self.networks['classifier'](h_common)
                     loss_ce = self.loss_function_ce(logits, y)
                     loss = loss_ce
 
