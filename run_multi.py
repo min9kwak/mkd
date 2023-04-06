@@ -96,7 +96,7 @@ def main_worker(local_rank: int, config: object):
                                       test_size=config.test_size,
                                       missing_rate=config.missing_rate)
 
-    train_set = BrainMulti(dataset=datasets_dict['mri_total_train'],
+    train_set = BrainMulti(dataset=datasets_dict['mri_pet_complete_train'],
                            mri_transform=train_transform_mri,
                            pet_transform=train_transform_pet)
     validation_set = BrainMulti(dataset=datasets_dict['mri_pet_complete_validation'],

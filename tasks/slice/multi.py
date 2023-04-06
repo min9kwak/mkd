@@ -291,7 +291,7 @@ class Multi(object):
                     # input data
                     x_t = torch.concat(batch['pet']).float().to(self.local_rank)
                     x_s = torch.concat(batch['mri']).float().to(self.local_rank)
-                    y = batch['y'].long().repeat(self.config.num_slices).to(self.local_rank)
+                    y = batch['y'].long().repeat(self.test_num_slices).to(self.local_rank)
 
                     # hidden representations
                     h_t = self.networks['encoder_t'](x_t)
