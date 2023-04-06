@@ -101,7 +101,7 @@ class ConfigBase(object):
     def ddp_parser() -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser("Data Distributed Training", add_help=False)
         parser.add_argument('--gpus', type=str, nargs='+', default=None, help='')
-        parser.add_argument('--server', type=str, choices=('main', 'workstation', 'workstation2', 'workstation3'))
+        parser.add_argument('--server', type=str, choices=('main', 'workstation1', 'workstation2', 'workstation3'))
         parser.add_argument('--num_nodes', type=int, default=1, help='')
         parser.add_argument('--node_rank', type=int, default=0, help='')
         parser.add_argument('--dist_url', type=str, default='tcp://127.0.0.1:3500', help='')
