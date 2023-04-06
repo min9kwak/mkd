@@ -1,26 +1,22 @@
 import os
 import collections
-
-import numpy as np
 import wandb
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-
 from torch.utils.data import DataLoader
 
 from utils.metrics import classification_result
 from utils.logging import make_epoch_description, get_rich_pbar
 from utils.optimization import get_optimizer
 from utils.optimization import get_cosine_scheduler
-from dataset.samplers import ImbalancedDatasetSampler
+from datasets.samplers import ImbalancedDatasetSampler
 
 
 class Single(object):
 
     # trainable network in each stage
-    network_names = ['encoder', 'projector', 'classifier']
+    network_names = ['encoder', 'classifier']
 
     def __init__(self, networks: dict, data_type: str):
 
@@ -33,25 +29,17 @@ class Single(object):
         assert data_type in ['mri', 'pet']
         self.data_type = data_type
 
-        if self.networks['projector'] is None:
-            del self.networks['projector']
-            self.network_names = ['encoder', 'projector']
-            self.use_projector = False
-        else:
-            self.use_projector = True
-
     def prepare(self,
                 checkpoint_dir,
                 loss_function_ce,
                 optimizer: str = 'adamw',
-                learning_rate: float = 0.0001,
-                weight_decay: float = 0.00001,
+                learning_rate: float = 0.001,
+                weight_decay: float = 0.0001,
                 cosine_warmup: int = 0,
                 cosine_cycles: int = 1,
                 cosine_min_lr: float = 0.0,
                 epochs: int = 100,
-                batch_size: int = 4,
-                accumulate: int = 4,
+                batch_size: int = 16,
                 num_workers: int = 4,
                 distributed: bool = False,
                 local_rank: int = 0,
@@ -64,15 +52,21 @@ class Single(object):
         self.loss_function_ce = loss_function_ce
         self.epochs = epochs
         self.batch_size = batch_size
-        self.accumulate = accumulate
         self.num_workers = num_workers
         self.distributed = distributed
         self.local_rank = local_rank
         self.mixed_precision = mixed_precision
         self.enable_wandb = enable_wandb
+        self.config = kwargs.get('config', None)
 
-        if self.accumulate > 1:
-            assert self.mixed_precision
+        if self.config.train_slices == 'random':
+            self.test_num_slices = 3
+        elif self.config.train_slices == 'fixed':
+            self.test_num_slices = 3
+        elif self.config.train_slices in ['sagittal', 'coronal', 'axial']:
+            self.test_num_slices = 1
+        else:
+            raise ValueError
 
         if distributed:
             raise NotImplementedError
@@ -80,15 +74,9 @@ class Single(object):
             _ = [v.to(self.local_rank) for k, v in self.networks.items()]
 
         # Optimization setting
-        if self.use_projector:
-            params = [{'params': self.networks['encoder'].parameters()},
-                      {'params': self.networks['projector'].parameters()},
-                      {'params': self.networks['classifier'].parameters()}]
-        else:
-            params = [{'params': self.networks['encoder'].parameters()},
-                      {'params': self.networks['classifier'].parameters()}]
         self.optimizer = get_optimizer(
-            params=params,
+            params=[{'params': self.networks['encoder'].parameters()},
+                    {'params': self.networks['classifier'].parameters()}],
             name=optimizer,
             lr=learning_rate,
             weight_decay=weight_decay
@@ -116,10 +104,8 @@ class Single(object):
         loaders = {
             'train': DataLoader(dataset=datasets['train'], batch_size=self.batch_size,
                                 sampler=train_sampler, drop_last=True),
-            'validation': DataLoader(dataset=datasets['validation'], batch_size=self.batch_size,
-                                     drop_last=False),
-            'test': DataLoader(dataset=datasets['test'], batch_size=self.batch_size,
-                               drop_last=False)
+            'validation': DataLoader(dataset=datasets['validation'], batch_size=self.batch_size, drop_last=False),
+            'test': DataLoader(dataset=datasets['test'], batch_size=self.batch_size, drop_last=False)
         }
 
         # Logging
@@ -128,11 +114,6 @@ class Single(object):
         # Find the best model by MRI-only test loss
         best_eval_loss = float('inf')
         best_epoch = 0
-
-        if self.enable_wandb:
-            len_loader = len(loaders['train'])
-            log_freq = (len_loader * self.batch_size // (self.batch_size * self.accumulate)) * self.accumulate
-            wandb.watch([v for k, v in self.networks.items()], log='all', log_freq=log_freq)
 
         for epoch in range(1, self.epochs + 1):
 
@@ -190,24 +171,25 @@ class Single(object):
         self.save_checkpoint(ckpt, epoch=epoch)
 
         # adjusted evaluation
-        test_adjusted_history = self.evaluate(eval_loader=loaders['test'], adjusted=True)
+        validation_history = self.evaluate(loaders['validation'], adjusted=True)
+        test_history = self.evaluate(loaders['test'], adjusted=True)
 
         last_history = collections.defaultdict(dict)
-        for k, v in test_adjusted_history.items():
-            last_history[f'adjusted/{k}'] = v
-
+        for k, v in validation_history.items():
+            last_history[f'adjusted/validation/{k}'] = v
+        for k, v in test_history.items():
+            last_history[f'adjusted/test/{k}'] = v
         if self.enable_wandb:
             wandb.log(last_history)
 
-    def train(self, train_loader, adjusted=False):
+    def train(self, data_loader, adjusted=False):
 
         self._set_learning_phase(train=True)
 
         # Logging
-        len_loader = len(train_loader)
-        steps = (len_loader * self.batch_size // (self.batch_size * self.accumulate)) * self.accumulate
-
-        result = {'cross_entropy': torch.zeros(steps, device=self.local_rank)}
+        steps = len(data_loader)
+        result = {'total_loss': torch.zeros(steps, device=self.local_rank),
+                  'cross_entropy': torch.zeros(steps, device=self.local_rank)}
 
         with get_rich_pbar(transient=True, auto_refresh=False) as pg:
 
@@ -215,39 +197,31 @@ class Single(object):
                 task = pg.add_task(f"[bold red] Training...", total=steps)
 
             y_true, y_pred = [], []
-            for i, batch in enumerate(train_loader):
+            for i, batch in enumerate(data_loader):
                 with torch.cuda.amp.autocast(self.mixed_precision):
-
                     # input data
-                    x = batch[f'{self.data_type}'].float().to(self.local_rank)
-                    y = batch['y'].long().to(self.local_rank)
+                    x = torch.concat(batch[f'{self.data_type}']).float().to(self.local_rank)
+                    y = batch['y'].long().repeat(self.config.num_slices).to(self.local_rank)
 
                     # hidden representations
                     h = self.networks['encoder'](x)
-                    if self.use_projector:
-                        h = self.networks['projector'](h)
                     logits = self.networks['classifier'](h)
 
-                    loss = self.loss_function_ce(logits, y)
-                    loss = loss / self.accumulate
+                    loss_ce = self.loss_function_ce(logits, y)
+                    loss = loss_ce
 
-                # Accumulates scaled gradients
                 if self.scaler is not None:
                     self.scaler.scale(loss).backward()
+                    self.scaler.step(self.optimizer)
+                    self.scaler.update()
                 else:
                     loss.backward()
-
-                # Update Optimizer
-                if (i + 1) % self.accumulate == 0:
-                    if self.scaler is not None:
-                        self.scaler.step(self.optimizer)
-                        self.scaler.update()
-                    else:
-                        self.optimizer.step()
-                    self.optimizer.zero_grad()
+                    self.optimizer.step()
+                self.optimizer.zero_grad()
 
                 # save monitoring values
-                result['cross_entropy'][i] = loss * self.accumulate
+                result['total_loss'][i] = loss.detach()
+                result['cross_entropy'][i] = loss_ce.detach()
 
                 if self.local_rank == 0:
                     desc = f"[bold green] Epoch {self.epoch} [{i+1}/{steps}]: "
@@ -256,12 +230,10 @@ class Single(object):
                     pg.update(task, advance=1., description=desc)
                     pg.refresh()
 
-                y_true.append(y.long())
+                y_true.append(y.chunk(self.config.num_slices)[0].long())
+                num_classes = logits.shape[-1]
+                logits = logits.reshape(self.config.num_slices, -1, num_classes).mean(0)
                 y_pred.append(logits)
-
-                # Ignore the remained batches
-                if (i + 1) == steps:
-                    break
 
         result = {k: v.mean().item() for k, v in result.items()}
 
@@ -278,11 +250,14 @@ class Single(object):
         return result
 
     @torch.no_grad()
-    def evaluate(self, eval_loader, adjusted=False):
+    def evaluate(self, data_loader, adjusted=False):
 
         self._set_learning_phase(train=False)
-        steps = len(eval_loader)
-        result = {'cross_entropy': torch.zeros(steps, device=self.local_rank)}
+
+        # Logging
+        steps = len(data_loader)
+        result = {'total_loss': torch.zeros(steps, device=self.local_rank),
+                  'cross_entropy': torch.zeros(steps, device=self.local_rank)}
 
         with get_rich_pbar(transient=True, auto_refresh=False) as pg:
 
@@ -290,28 +265,30 @@ class Single(object):
                 task = pg.add_task(f"[bold red] Evaluating...", total=steps)
 
             y_true, y_pred = [], []
-            for i, batch in enumerate(eval_loader):
+            for i, batch in enumerate(data_loader):
                 with torch.cuda.amp.autocast(self.mixed_precision):
-
                     # input data
-                    x = batch[f'{self.data_type}'].float().to(self.local_rank)
-                    y = batch['y'].long().to(self.local_rank)
+                    x = torch.concat(batch[f'{self.data_type}']).float().to(self.local_rank)
+                    y = batch['y'].long().repeat(self.config.num_slices).to(self.local_rank)
 
                     # hidden representations
                     h = self.networks['encoder'](x)
-                    if self.use_projector:
-                        h = self.networks['projector'](h)
                     logits = self.networks['classifier'](h)
-                    loss = self.loss_function_ce(logits, y)
+
+                    loss_ce = self.loss_function_ce(logits, y)
+                    loss = loss_ce
 
                 # save monitoring values
-                result['cross_entropy'][i] = loss
+                result['total_loss'][i] = loss.detach()
+                result['cross_entropy'][i] = loss_ce.detach()
 
                 if self.local_rank == 0:
                     pg.update(task, advance=1.)
                     pg.refresh()
 
-                y_true.append(y.long())
+                y_true.append(y.chunk(self.config.num_slices)[0].long())
+                num_classes = logits.shape[-1]
+                logits = logits.reshape(self.config.num_slices, -1, num_classes).mean(0)
                 y_pred.append(logits)
 
         result = {k: v.mean().item() for k, v in result.items()}
