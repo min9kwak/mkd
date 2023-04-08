@@ -204,8 +204,7 @@ class Single(object):
 
         # Logging
         steps = len(data_loader)
-        result = {'total_loss': torch.zeros(steps, device=self.local_rank),
-                  'cross_entropy': torch.zeros(steps, device=self.local_rank)}
+        result = {'cross_entropy': torch.zeros(steps, device=self.local_rank)}
 
         with get_rich_pbar(transient=True, auto_refresh=False) as pg:
 
@@ -222,21 +221,18 @@ class Single(object):
                     # hidden representations
                     h = self.networks['encoder'](x)
                     logits = self.networks['classifier'](h)
-
                     loss_ce = self.loss_function_ce(logits, y)
-                    loss = loss_ce
 
                 if self.scaler is not None:
-                    self.scaler.scale(loss).backward()
+                    self.scaler.scale(loss_ce).backward()
                     self.scaler.step(self.optimizer)
                     self.scaler.update()
                 else:
-                    loss.backward()
+                    loss_ce.backward()
                     self.optimizer.step()
                 self.optimizer.zero_grad()
 
                 # save monitoring values
-                result['total_loss'][i] = loss.detach()
                 result['cross_entropy'][i] = loss_ce.detach()
 
                 if self.local_rank == 0:
@@ -272,8 +268,7 @@ class Single(object):
 
         # Logging
         steps = len(data_loader)
-        result = {'total_loss': torch.zeros(steps, device=self.local_rank),
-                  'cross_entropy': torch.zeros(steps, device=self.local_rank)}
+        result = {'cross_entropy': torch.zeros(steps, device=self.local_rank)}
 
         with get_rich_pbar(transient=True, auto_refresh=False) as pg:
 
@@ -290,12 +285,9 @@ class Single(object):
                     # hidden representations
                     h = self.networks['encoder'](x)
                     logits = self.networks['classifier'](h)
-
                     loss_ce = self.loss_function_ce(logits, y)
-                    loss = loss_ce
 
                 # save monitoring values
-                result['total_loss'][i] = loss.detach()
                 result['cross_entropy'][i] = loss_ce.detach()
 
                 if self.local_rank == 0:

@@ -15,7 +15,7 @@ from tasks.slice.single import Single
 
 from datasets.brain import BrainProcessor, BrainMRI, BrainPET
 from datasets.slice.transforms import make_mri_transforms, make_pet_transforms
-from models.slice.build import build_networks
+from models.slice.build import build_networks_single
 
 from utils.logging import get_rich_logger
 from utils.gpu import set_gpu
@@ -26,6 +26,11 @@ def main():
 
     config = SliceSingleConfig.parse_arguments()
     config.task = 'Single-' + config.data_type.upper() + '-' + config.pet_type.upper()
+
+    if config.server == 'main':
+        setattr(config, 'root', 'D:/data/ADNI')
+    else:
+        setattr(config, 'root', '/raidWorkspace/mingu/Data/ADNI')
 
     set_gpu(config)
     num_gpus_per_node = len(config.gpus)
@@ -75,24 +80,23 @@ def main_worker(local_rank: int, config: object):
     # Transform
     if config.data_type == 'mri':
         train_transform, test_transform = make_mri_transforms(
-            image_size=config.image_size, intensity=config.intensity, crop_size=config.crop_size,
-            rotate=config.rotate, flip=config.flip, affine=config.affine, blur_std=config.blur_std,
+            image_size_mri=config.image_size, intensity_mri=config.intensity, crop_size_mri=config.crop_size,
+            rotate_mri=config.rotate, flip_mri=config.flip, affine_mri=config.affine, blur_std_mri=config.blur_std,
             train_slices=config.train_slices, num_slices=config.num_slices, slice_range=config.slice_range,
-            prob=config.prob
-        )
+            prob=config.prob)
     elif config.data_type == 'pet':
         train_transform, test_transform = make_pet_transforms(
-            image_size=config.image_size, intensity=config.intensity, crop_size=config.crop_size,
-            rotate=config.rotate, flip=config.flip, affine=config.affine, blur_std=config.blur_std,
+            image_size_pet=config.image_size, intensity_pet=config.intensity, crop_size_pet=config.crop_size,
+            rotate_pet=config.rotate, flip_pet=config.flip, affine_pet=config.affine, blur_std_pet=config.blur_std,
             train_slices=config.train_slices, num_slices=config.num_slices, slice_range=config.slice_range,
-            prob=config.prob
-        )
+            prob=config.prob)
     else:
         raise ValueError('data_type must be either mri or pet')
 
     # Dataset
     processor = BrainProcessor(root=config.root,
                                data_file=config.data_file,
+                               mri_type=config.mri_type,
                                pet_type=config.pet_type,
                                mci_only=config.mci_only,
                                random_state=config.random_state)
@@ -114,18 +118,15 @@ def main_worker(local_rank: int, config: object):
     datasets = {'train': train_set, 'validation': validation_set, 'test': test_set}
 
     # Networks
-    networks = build_networks(config)
-    if config.data_type == 'mri':
-        networks = {'encoder': networks['encoder_mri'], 'classifier': networks['classifier_mri']}
-    elif config.data_type == 'pet':
-        networks = {'encoder': networks['encoder_pet'], 'classifier': networks['classifier_pet']}
-    else:
-        raise ValueError
+    networks = build_networks_single(config)
 
     # Cross Entropy Loss Function
     class_weight = None
     if config.balance:
-        class_weight = torch.tensor(processor.class_weight, dtype=torch.float).to(local_rank)
+        if config.data_type == 'mri':
+            class_weight = torch.tensor(processor.class_weight_mri, dtype=torch.float).to(local_rank)
+        else:
+            class_weight = torch.tensor(processor.class_weight_pet, dtype=torch.float).to(local_rank)
     loss_function_ce = nn.CrossEntropyLoss(weight=class_weight, reduction='mean')
 
     # Model (Task)

@@ -18,15 +18,74 @@ class Distillation(object):
     # networks
     # teacher: multi (MRI+PET)  --> PET for Multi
     # student:                  --> MRI for Multi
-    network_names = ['encoder_t', 'encoder_s', 'classifier_t', 'classifier_s']
+    network_names = ['encoder_t_t', 'encoder_t_s', 'classifier_t',
+                     'encoder_s', 'classifier_s']
+    ''' pseudo-code
+    0. Before ramp-up
+    do step 1
+    do step 3
+    
+    1. Complete Training (teacher network)
+    unfreeze all networks
+    train all networks
+    for mri, pet in complete_set:
+        h_pet = encoder_t_t(pet)
+        h_mri = encoder_t_s(mri)
+        h = concat(h_pet, h_mri)
+        logit = classifier_t(h)
+        loss = cross_entropy(logit, y)
+        optimizer_t.update()
+    
+    2. Complete -> Incomplete KD
+    freeze encoder_t_t, encoder_t_s, classifier_t
+    eval encoder_t_t, encoder_t_s, classifier_t
+    for mri, pet in complete_set:
+        with torch.no_grad():
+            h_pet = encoder_t_t(pet)
+            h_mri = encoder_t_s(mri)
+            h = concat(h_pet, h_mri)
+            logit = classifier_t(h)
+        
+        h_mri_s = encoder_s(mri)
+        logit_s = classifier_s(h_mri_s)
+        
+        loss_kd = kd(logit, logit_s)
+        optimizer_s.update()
+    
+    3. Incomplete Training (student_network)
+    unfreeze all networks
+    train all networks
+    for mri in incomplete_set:
+        h_mri_s = encoder_s(mri)
+        logit_s = classifier_s(h_mri)
+        loss = cross_entropy(logit_s, y)
+        optimizer.update()
+    
+    4. Incomplete -> Complete KD
+    freeze encoder_s
+    eval encoder_s
+    for mri in incomplete_set:
+        h_mri = encoder_t_s(mri)
+        with torch.no_grad():
+            h_mri_s = encoder_s(mri)
+        loss_kd = kd(h_mri_s, h_mri)
+    
+    optimizer_t.step(), optimizer_s.step()
+    scheduler.step()
+        
+        
+        
+    '''
 
     def __init__(self,
                  networks: dict):
 
         self.networks = networks
         self.scaler = None
-        self.optimizer = None
-        self.scheduler = None
+        self.optimizer_t = None
+        self.optimizer_s = None
+        self.scheduler_t = None
+        self.scheduler_s = None
         self.prepared = False
 
     def prepare(self,
@@ -46,6 +105,8 @@ class Distillation(object):
                 add_type: str = 'concat',
                 mixed_precision: bool = True,
                 enable_wandb: bool = True,
+                warmup: int = 10,
+                kd_alpha: float = 1.0,
                 **kwargs):
 
         # Set attributes
@@ -60,6 +121,9 @@ class Distillation(object):
         self.add_type = add_type
         self.mixed_precision = mixed_precision
         self.enable_wandb = enable_wandb
+        self.warmup = warmup
+        self.kd_alpha = kd_alpha
+
         self.config = kwargs.get('config', None)
 
         if self.config.train_slices == 'random':
@@ -77,14 +141,20 @@ class Distillation(object):
             _ = [v.to(self.local_rank) for k, v in self.networks.items()]
 
         # Optimization setting
-        self.optimizer = get_optimizer(params=[{'params': self.networks['encoder_t'].parameters()},
-                                               {'params': self.networks['encoder_s'].parameters()},
-                                               {'params': self.networks['classifier'].parameters()}],
-                                       name=optimizer,
-                                       lr=learning_rate,
-                                       weight_decay=weight_decay)
-        self.scheduler = get_cosine_scheduler(self.optimizer, epochs=self.epochs, warmup_steps=cosine_warmup,
-                                              cycles=cosine_cycles, min_lr=cosine_min_lr)
+        self.optimizer_t = get_optimizer(params=[{'params': self.networks['encoder_t'].parameters()},
+                                                 {'params': self.networks['classifier_t'].parameters()}],
+                                         name=optimizer,
+                                         lr=learning_rate,
+                                         weight_decay=weight_decay)
+        self.scheduler_t = get_cosine_scheduler(self.optimizer_t, epochs=self.epochs, warmup_steps=cosine_warmup,
+                                                cycles=cosine_cycles, min_lr=cosine_min_lr)
+        self.optimizer_s = get_optimizer(params=[{'params': self.networks['encoder_s'].parameters()},
+                                                 {'params': self.networks['classifier_s'].parameters()}],
+                                         name=optimizer,
+                                         lr=learning_rate,
+                                         weight_decay=weight_decay)
+        self.scheduler_s = get_cosine_scheduler(self.optimizer_s, epochs=self.epochs, warmup_steps=cosine_warmup,
+                                                cycles=cosine_cycles, min_lr=cosine_min_lr)
         self.scaler = torch.cuda.amp.GradScaler() if mixed_precision else None
 
         # Ready to train
@@ -96,11 +166,14 @@ class Distillation(object):
             raise RuntimeError("Training not prepared.")
 
         # DataSet & DataLoader
-        train_sampler = ImbalancedDatasetSampler(dataset=datasets['train'])
+        train_sampler_t = ImbalancedDatasetSampler(dataset=datasets['train_t'])
+        train_sampler_s = ImbalancedDatasetSampler(dataset=datasets['train_s'])
 
         loaders = {
-            'train': DataLoader(dataset=datasets['train'], batch_size=self.batch_size,
-                                sampler=train_sampler, drop_last=True),
+            'train_t': DataLoader(dataset=datasets['train_t'], batch_size=self.batch_size,
+                                  sampler=train_sampler_t, drop_last=True),
+            'train_s': DataLoader(dataset=datasets['train_s'], batch_size=self.batch_size,
+                                  sampler=train_sampler_s, drop_last=True),
             'validation': DataLoader(dataset=datasets['validation'], batch_size=self.batch_size, drop_last=False),
             'test': DataLoader(dataset=datasets['test'], batch_size=self.batch_size, drop_last=False)
         }
@@ -117,7 +190,10 @@ class Distillation(object):
             self.epoch = epoch
 
             # Train and Test
-            train_history = self.train(loaders['train'], adjusted=False)
+            if epoch <= self.warmup:
+                train_history = self.train_warmup(loaders['train_t'], loaders['train_s'], adjusted=False)
+            else:
+                train_history = self.train(loaders['train_t'], loaders['train_s'], adjusted=False)
             validation_history = self.evaluate(loaders['validation'], adjusted=False)
             test_history = self.evaluate(loaders['test'], adjusted=False)
 
@@ -160,8 +236,10 @@ class Distillation(object):
                 self.save_checkpoint(ckpt, epoch=epoch)
 
             # Update learning rate
-            if self.scheduler is not None:
-                self.scheduler.step()
+            if self.scheduler_t is not None:
+                self.scheduler_t.step()
+            if self.scheduler_s is not None:
+                self.scheduler_s.step()
 
         # Save final model checkpoint
         ckpt = os.path.join(self.checkpoint_dir, f"ckpt.last.pth.tar")
@@ -195,23 +273,142 @@ class Distillation(object):
         if self.enable_wandb:
             wandb.log(best_history)
 
-    def train(self, data_loader, adjusted=False):
+    def train_warmup(self, data_loader_t, data_loader_s, adjusted=False):
+
+        self._set_learning_phase(train=True)
+        # TODO: step_t / step_s (individual training) -> train / eval
+        # TODO: step_t / step_s (KD training) -> train
+        steps_t = len(data_loader_t)
+        steps_s = len(data_loader_s)
+        result_t = {'cross_entropy_t': torch.zeros(steps_t, device=self.local_rank)}
+        result_s = {'cross_entropy_s': torch.zeros(steps_s, device=self.local_rank)}
+
+        # 1. Training Teacher Model
+        with get_rich_pbar(transient=True, auto_refresh=False) as pg:
+            if self.local_rank == 0:
+                task = pg.add_task(f"[bold red] Training...", total=steps_t)
+            y_true, y_pred = [], []
+            for i, batch in enumerate(data_loader_t):
+
+                with torch.cuda.amp.autocast(self.mixed_precision):
+                    x_t = torch.concat(batch['pet']).float().to(self.local_rank)
+                    y = batch['y'].long().repeat(self.config.num_slices).to(self.local_rank)
+                    h_t = self.networks['encoder_t'](x_t)
+                    logits = self.networks['classifier_t'](h_t)
+                    loss_ce = self.loss_function_ce(logits, y)
+                    loss = loss_ce
+
+                if self.scaler is not None:
+                    self.scaler.scale(loss).backward()
+                    self.scaler.step(self.optimizer_t)
+                    self.scaler.update()
+                else:
+                    loss.backward()
+                    self.optimizer_t.step()
+                self.optimizer_t.zero_grad()
+
+                # save monitoring values
+                result_t['cross_entropy_t'][i] = loss_ce.detach()
+
+                if self.local_rank == 0:
+                    desc = f"[bold green] Epoch {self.epoch} [{i + 1}/{steps_t}]: "
+                    for k, v in result_t.items():
+                        desc += f" {k} : {v[:i + 1].mean():.4f} |"
+                    pg.update(task, advance=1., description=desc)
+                    pg.refresh()
+
+                y_true.append(y.chunk(self.config.num_slices)[0].long())
+                num_classes = logits.shape[-1]
+                logits = logits.reshape(self.config.num_slices, -1, num_classes).mean(0)
+                y_pred.append(logits)
+        result_t = {k: v.mean().item() for k, v in result_t.items()}
+
+        # enforce to float32: accuracy and macro f1 score
+        y_true = torch.cat(y_true, dim=0)
+        y_pred = torch.cat(y_pred, dim=0).to(torch.float32)
+
+        clf_result = classification_result(y_true=y_true.cpu().numpy(),
+                                           y_pred=y_pred.softmax(1).detach().cpu().numpy(),
+                                           adjusted=adjusted)
+        for k, v in clf_result.items():
+            result_t[k+'_t'] = v
+
+        # 2. Training Student Model
+        with get_rich_pbar(transient=True, auto_refresh=False) as pg:
+            if self.local_rank == 0:
+                task = pg.add_task(f"[bold red] Training...", total=steps_s)
+            y_true, y_pred = [], []
+            for i, batch in enumerate(data_loader_s):
+
+                with torch.cuda.amp.autocast(self.mixed_precision):
+                    x_s = torch.concat(batch['mri']).float().to(self.local_rank)
+                    y = batch['y'].long().repeat(self.config.num_slices).to(self.local_rank)
+                    h_s = self.networks['encoder_s'](x_s)
+                    logits = self.networks['classifier_s'](h_s)
+                    loss_ce = self.loss_function_ce(logits, y)
+                    loss = loss_ce
+
+                if self.scaler is not None:
+                    self.scaler.scale(loss).backward()
+                    self.scaler.step(self.optimizer_s)
+                    self.scaler.update()
+                else:
+                    loss.backward()
+                    self.optimizer_s.step()
+                self.optimizer_s.zero_grad()
+
+                # save monitoring values
+                result_s['cross_entropy_s'][i] = loss_ce.detach()
+
+                if self.local_rank == 0:
+                    desc = f"[bold green] Epoch {self.epoch} [{i + 1}/{steps_s}]: "
+                    for k, v in result_s.items():
+                        desc += f" {k} : {v[:i + 1].mean():.4f} |"
+                    pg.update(task, advance=1., description=desc)
+                    pg.refresh()
+
+                y_true.append(y.chunk(self.config.num_slices)[0].long())
+                num_classes = logits.shape[-1]
+                logits = logits.reshape(self.config.num_slices, -1, num_classes).mean(0)
+                y_pred.append(logits)
+        result_s = {k: v.mean().item() for k, v in result_s.items()}
+
+        # enforce to float32: accuracy and macro f1 score
+        y_true = torch.cat(y_true, dim=0)
+        y_pred = torch.cat(y_pred, dim=0).to(torch.float32)
+
+        clf_result = classification_result(y_true=y_true.cpu().numpy(),
+                                           y_pred=y_pred.softmax(1).detach().cpu().numpy(),
+                                           adjusted=adjusted)
+        for k, v in clf_result.items():
+            result_s[k+'_s'] = v
+
+        # update result dict
+        result_t.update(result_s)
+
+        return result_t
+
+    def train(self, data_loader_t, data_loader_s, adjusted=False):
 
         # Set network
         self._set_learning_phase(train=True)
 
         # Logging
-        steps = len(data_loader)
-        result = {'total_loss': torch.zeros(steps, device=self.local_rank),
-                  'cross_entropy': torch.zeros(steps, device=self.local_rank)}
+        steps_t = len(data_loader_t)
+        steps_s = len(data_loader_s)
+        result_t = {'cross_entropy_t': torch.zeros(steps_t, device=self.local_rank),
+                    'kd_loss_t': torch.zeros(steps_t, device=self.local_rank)}
+        result_s = {'cross_entropy_s': torch.zeros(steps_s, device=self.local_rank),
+                    'kd_loss_s': torch.zeros(steps_s, device=self.local_rank)}
 
+        # 1. Training Teacher (Frozen Student)
         with get_rich_pbar(transient=True, auto_refresh=False) as pg:
 
             if self.local_rank == 0:
-                task = pg.add_task(f"[bold red] Training...", total=steps)
+                task = pg.add_task(f"[bold red] Training...", total=steps_t)
 
             y_true, y_pred = [], []
-            for i, batch in enumerate(data_loader):
+            for i, batch in enumerate(data_loader_t):
                 with torch.cuda.amp.autocast(self.mixed_precision):
                     # input data
                     x_t = torch.concat(batch['pet']).float().to(self.local_rank)
@@ -270,55 +467,42 @@ class Distillation(object):
         return result
 
     @torch.no_grad()
-    def evaluate(self, data_loader, adjusted=False):
+    def evaluate(self, data_loader_t, data_loader_s, adjusted=False):
 
-        # Set network
         self._set_learning_phase(train=False)
 
-        # Logging
-        steps = len(data_loader)
-        result = {'total_loss': torch.zeros(steps, device=self.local_rank),
-                  'cross_entropy': torch.zeros(steps, device=self.local_rank)}
+        steps_t = len(data_loader_t)
+        steps_s = len(data_loader_s)
+        result_t = {'cross_entropy_t': torch.zeros(steps_t, device=self.local_rank)}
+        result_s = {'cross_entropy_s': torch.zeros(steps_s, device=self.local_rank)}
 
+        # 1. Training Teacher Model
         with get_rich_pbar(transient=True, auto_refresh=False) as pg:
-
             if self.local_rank == 0:
-                task = pg.add_task(f"[bold red] Evaluating...", total=steps)
-
+                task = pg.add_task(f"[bold red] Evaluating...", total=steps_t)
             y_true, y_pred = [], []
-            for i, batch in enumerate(data_loader):
+            for i, batch in enumerate(data_loader_t):
+
                 with torch.cuda.amp.autocast(self.mixed_precision):
-                    # input data
                     x_t = torch.concat(batch['pet']).float().to(self.local_rank)
-                    x_s = torch.concat(batch['mri']).float().to(self.local_rank)
-                    y = batch['y'].long().repeat(self.test_num_slices).to(self.local_rank)
-
-                    # hidden representations
+                    y = batch['y'].long().repeat(self.config.num_slices).to(self.local_rank)
                     h_t = self.networks['encoder_t'](x_t)
-                    h_s = self.networks['encoder_s'](x_s)
-                    if self.add_type == 'concat':
-                        h_common = torch.concat([h_t, h_s], dim=1)
-                    else:
-                        h_common = h_t + h_s
-
-                    logits = self.networks['classifier'](h_common)
+                    logits = self.networks['classifier_t'](h_t)
                     loss_ce = self.loss_function_ce(logits, y)
                     loss = loss_ce
 
                 # save monitoring values
-                result['total_loss'][i] = loss.detach()
-                result['cross_entropy'][i] = loss_ce.detach()
+                result_t['cross_entropy_t'][i] = loss_ce.detach()
 
                 if self.local_rank == 0:
                     pg.update(task, advance=1.)
                     pg.refresh()
 
-                y_true.append(y.chunk(self.test_num_slices)[0].long())
+                y_true.append(y.chunk(self.config.num_slices)[0].long())
                 num_classes = logits.shape[-1]
-                logits = logits.reshape(self.test_num_slices, -1, num_classes).mean(0)
+                logits = logits.reshape(self.config.num_slices, -1, num_classes).mean(0)
                 y_pred.append(logits)
-
-        result = {k: v.mean().item() for k, v in result.items()}
+        result_t = {k: v.mean().item() for k, v in result_t.items()}
 
         # enforce to float32: accuracy and macro f1 score
         y_true = torch.cat(y_true, dim=0)
@@ -328,9 +512,50 @@ class Distillation(object):
                                            y_pred=y_pred.softmax(1).detach().cpu().numpy(),
                                            adjusted=adjusted)
         for k, v in clf_result.items():
-            result[k] = v
+            result_t[k + '_t'] = v
 
-        return result
+        # 2. Training Student Model
+        with get_rich_pbar(transient=True, auto_refresh=False) as pg:
+            if self.local_rank == 0:
+                task = pg.add_task(f"[bold red] Evaluating...", total=steps_s)
+            y_true, y_pred = [], []
+            for i, batch in enumerate(data_loader_s):
+
+                with torch.cuda.amp.autocast(self.mixed_precision):
+                    x_s = torch.concat(batch['mri']).float().to(self.local_rank)
+                    y = batch['y'].long().repeat(self.config.num_slices).to(self.local_rank)
+                    h_s = self.networks['encoder_s'](x_s)
+                    logits = self.networks['classifier_s'](h_s)
+                    loss_ce = self.loss_function_ce(logits, y)
+                    loss = loss_ce
+
+                # save monitoring values
+                result_s['cross_entropy_s'][i] = loss_ce.detach()
+
+                if self.local_rank == 0:
+                    pg.update(task, advance=1.)
+                    pg.refresh()
+
+                y_true.append(y.chunk(self.config.num_slices)[0].long())
+                num_classes = logits.shape[-1]
+                logits = logits.reshape(self.config.num_slices, -1, num_classes).mean(0)
+                y_pred.append(logits)
+        result_s = {k: v.mean().item() for k, v in result_s.items()}
+
+        # enforce to float32: accuracy and macro f1 score
+        y_true = torch.cat(y_true, dim=0)
+        y_pred = torch.cat(y_pred, dim=0).to(torch.float32)
+
+        clf_result = classification_result(y_true=y_true.cpu().numpy(),
+                                           y_pred=y_pred.softmax(1).detach().cpu().numpy(),
+                                           adjusted=adjusted)
+        for k, v in clf_result.items():
+            result_s[k + '_s'] = v
+
+        # update result dict
+        result_t.update(result_s)
+
+        return result_t
 
     @staticmethod
     def move_optimizer_states(optimizer: torch.optim.Optimizer, device: int = 0):

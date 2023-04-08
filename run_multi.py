@@ -15,7 +15,7 @@ from tasks.slice.multi import Multi
 
 from datasets.brain import BrainProcessor, BrainMulti
 from datasets.slice.transforms import make_mri_transforms, make_pet_transforms
-from models.slice.build import build_networks
+from models.slice.build import build_networks_multi
 
 from utils.logging import get_rich_logger
 from utils.gpu import set_gpu
@@ -26,6 +26,11 @@ def main():
 
     config = SliceMultiConfig.parse_arguments()
     config.task = 'Multi-' + config.data_type.upper() + '-' + config.pet_type.upper()
+
+    if config.server == 'main':
+        setattr(config, 'root', 'D:/data/ADNI')
+    else:
+        setattr(config, 'root', '/raidWorkspace/mingu/Data/ADNI')
 
     set_gpu(config)
     num_gpus_per_node = len(config.gpus)
@@ -73,22 +78,13 @@ def main_worker(local_rank: int, config: object):
         )
 
     # Transform
-    train_transform_mri, test_transform_mri = make_mri_transforms(
-        image_size=config.image_size, intensity=config.intensity, crop_size=config.crop_size,
-        rotate=config.rotate, flip=config.flip, affine=config.affine, blur_std=config.blur_std,
-        train_slices=config.train_slices, num_slices=config.num_slices, slice_range=config.slice_range,
-        prob=config.prob
-    )
-    train_transform_pet, test_transform_pet = make_pet_transforms(
-        image_size=config.image_size, intensity=config.intensity, crop_size=config.crop_size,
-        rotate=config.rotate, flip=config.flip, affine=config.affine, blur_std=config.blur_std,
-        train_slices=config.train_slices, num_slices=config.num_slices, slice_range=config.slice_range,
-        prob=config.prob
-    )
+    train_transform_mri, test_transform_mri = make_mri_transforms(**config)
+    train_transform_pet, test_transform_pet = make_pet_transforms(**config)
 
     # Dataset
     processor = BrainProcessor(root=config.root,
                                data_file=config.data_file,
+                               mri_type=config.mri_type,
                                pet_type=config.pet_type,
                                mci_only=config.mci_only,
                                random_state=config.random_state)
@@ -109,7 +105,7 @@ def main_worker(local_rank: int, config: object):
     datasets = {'train': train_set, 'validation': validation_set, 'test': test_set}
 
     # Networks
-    networks = build_networks(config)
+    networks = build_networks_multi(config)
     networks = {'encoder_t': networks['encoder_pet'],
                 'encoder_s': networks['encoder_mri'],
                 'classifier': networks['classifier']}

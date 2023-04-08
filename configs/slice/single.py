@@ -2,10 +2,10 @@ import argparse
 from configs.base import ConfigBase
 
 
-class SliceMRIConfig(ConfigBase):
+class SliceSingleConfig(ConfigBase):
 
     def __init__(self, args=None, **kwargs):
-        super(SliceMRIConfig, self).__init__(args, **kwargs)
+        super(SliceSingleConfig, self).__init__(args, **kwargs)
 
     @staticmethod
     def data_parser() -> argparse.ArgumentParser:
@@ -13,7 +13,7 @@ class SliceMRIConfig(ConfigBase):
 
         parser = argparse.ArgumentParser("Data", add_help=False)
         parser.add_argument('--data_file', type=str, default='labels/data_info_multi.csv')
-        parser.add_argument('--data_type', type=str, default='mri')
+        parser.add_argument('--data_type', type=str, choices=('mri', 'pet'))
         parser.add_argument('--pet_type', type=str, choices=('FDG', 'FBP'), default='FBP')
         parser.add_argument('--mci_only', action='store_true')
 
@@ -24,14 +24,14 @@ class SliceMRIConfig(ConfigBase):
 
         # augmentation
         parser.add_argument('--mri_type', type=str, choices=('individual', 'template'))
-        parser.add_argument('--mri_image_size', type=int, default=72)
-        parser.add_argument('--mri_intensity', type=str, choices=('scale', 'normalize'))
-        parser.add_argument('--mri_crop_size', type=int)
-        parser.add_argument('--mri_rotate', action='store_true')
-        parser.add_argument('--mri_flip', action='store_true')
-        parser.add_argument('--mri_affine', action='store_true')
-        parser.add_argument('--mri_blur_std', type=float)
-        parser.add_argument('--mri_prob', type=float, default=0.5)
+        parser.add_argument('--image_size', type=int, default=72)
+        parser.add_argument('--intensity', type=str, choices=('scale', 'normalize', 'simple'))
+        parser.add_argument('--crop_size', type=int)
+        parser.add_argument('--rotate', action='store_true')
+        parser.add_argument('--flip', action='store_true')
+        parser.add_argument('--affine', action='store_true')
+        parser.add_argument('--blur_std', type=float)
+        parser.add_argument('--prob', type=float, default=0.5)
 
         # slice
         parser.add_argument('--train_slices', type=str, default='random',
@@ -60,10 +60,10 @@ class SliceMRIConfig(ConfigBase):
         parser.add_argument('--batch_size', type=int, default=4, help='Mini-batch size.')
         parser.add_argument('--num_workers', type=int, default=4, help='Number of CPU threads.')
 
-        parser.add_argument('--mri_optimizer', type=str, default='sgd', choices=('sgd', 'adamw'),
+        parser.add_argument('--optimizer', type=str, default='sgd', choices=('sgd', 'adamw'),
                             help='Optimization algorithm.')
-        parser.add_argument('--mri_learning_rate', type=float, default=0.001, help='Base learning rate to start from.')
-        parser.add_argument('--mri_weight_decay', type=float, default=1e-4, help='Weight decay factor.')
+        parser.add_argument('--learning_rate', type=float, default=0.001, help='Base learning rate to start from.')
+        parser.add_argument('--weight_decay', type=float, default=1e-4, help='Weight decay factor.')
 
         parser.add_argument('--cosine_warmup', type=int, default=0,
                             help='Number of warmups before cosine LR scheduling (-1 to disable.)')
@@ -76,7 +76,7 @@ class SliceMRIConfig(ConfigBase):
 
     @staticmethod
     def task_specific_parser() -> argparse.ArgumentParser:
-        parser = argparse.ArgumentParser('MRI', add_help=False)
+        parser = argparse.ArgumentParser('Single', add_help=False)
         parser.add_argument('--balance', action='store_true', help='apply class balance weight')
 
         return parser

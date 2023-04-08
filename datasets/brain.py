@@ -15,13 +15,17 @@ class BrainProcessor(object):
     def __init__(self,
                  root: str,
                  data_file: str = 'labels/data_info_multi.csv',
+                 mri_type: str = 'template',
                  pet_type: str = 'FBP',
                  mci_only: bool = False,
-                 random_state: int = 2023):
+                 random_state: int = 2023,
+                 **kwargs):
 
         self.root = root
         self.data_file = data_file
+        assert mri_type in ['individual', 'template']
         assert pet_type in ['FDG', 'FBP']
+        self.mri_type = mri_type
         self.pet_type = pet_type
         self.mci_only = mci_only
         self.random_state = random_state
@@ -35,6 +39,7 @@ class BrainProcessor(object):
     def process(self, validation_size: float = 0.1, test_size: float = 0.1, missing_rate: float = None):
 
         data = pd.read_csv(os.path.join(self.root, self.data_file), converters={'RID': str, 'Conv': int})
+        data = data.loc[data.IS_FILE]
         data['PET'] = data[self.pet_type]
 
         data = data.loc[data['Conv'].isin([0, 1])].reset_index(drop=True)
@@ -119,9 +124,12 @@ class BrainProcessor(object):
         mri_pet_complete_test = self.parse_data(complete_test)
 
         # 5. Class Weight for Balancing
-        self.class_weight = class_weight.compute_class_weight(class_weight='balanced',
-                                                              classes=np.unique(mri_pet_complete_train['y']),
-                                                              y=mri_pet_complete_train['y'])
+        self.class_weight_mri = class_weight.compute_class_weight(class_weight='balanced',
+                                                                  classes=np.unique(mri_total_train['y']),
+                                                                  y=mri_total_train['y'])
+        self.class_weight_pet = class_weight.compute_class_weight(class_weight='balanced',
+                                                                  classes=np.unique(mri_pet_complete_train['y']),
+                                                                  y=mri_pet_complete_train['y'])
 
         # 6. Return
         datasets = {'mri_pet_complete_train': mri_pet_complete_train,
@@ -193,7 +201,7 @@ class BrainProcessor(object):
         return dict(mri=mri_files, pet=pet_files, demo=demo, mc=mc, volume=volume, y=y)
 
     def str2mri(self, i):
-        return os.path.join(self.root, 'template/FS7', f'{i}.pkl')
+        return os.path.join(self.root, f'{self.mri_type}/FS7', f'{i}.pkl')
 
     def str2pet(self, i):
         if self.pet_type == 'FDG':

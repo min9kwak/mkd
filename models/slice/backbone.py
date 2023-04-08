@@ -72,6 +72,11 @@ class DenseNetBackbone(BackboneBase):
         else:
             raise ValueError
 
+    def _fix_first_conv(self):
+        conv0 = self.layers.conv0
+        self.layers.conv0 = nn.Conv2d(conv0.in_channels, conv0.out_channels,
+                                      kernel_size=3, stride=1, padding=1, bias=False)
+
 
 class ResNetBackbone(BackboneBase):
     def __init__(self, name: str = 'resnet50', in_channels: int = 1):

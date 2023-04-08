@@ -1,9 +1,6 @@
-import time
-import numpy as np
 import random
 
 import torch
-from torch.utils.data import DataLoader
 from monai.transforms import (
     Compose, AddChannel, RandRotate, RandRotate90, Resize, ScaleIntensity, ToTensor, RandFlip, RandZoom, RandAffine,
     RandSpatialCrop, NormalizeIntensity, RandGaussianNoise, Transform, CenterSpatialCrop,
@@ -13,6 +10,13 @@ from torchvision.transforms import ConvertImageDtype, Normalize
 from monai.utils.enums import TransformBackends
 from monai.config import DtypeLike
 from monai.utils import convert_data_type
+
+
+class Divide(Transform):
+    backend = [TransformBackends.TORCH, TransformBackends.NUMPY]
+
+    def __call__(self, img, *args, **kwargs):
+        return img / 255.0
 
 
 class RandomSlices(Transform):
@@ -82,48 +86,51 @@ class SingleSlices(Transform):
         return ret
 
 
-def make_pet_transforms(image_size: int = 72,
-                        intensity: str = 'scale',
-                        crop_size: int = None,
-                        rotate: bool = True,
-                        flip: bool = True,
-                        affine: bool = True,
-                        blur_std: float = 0.1,
+def make_mri_transforms(image_size_mri: int = 72,
+                        intensity_mri: str = 'simple',
+                        crop_size_mri: int = None,
+                        rotate_mri: bool = True,
+                        flip_mri: bool = True,
+                        affine_mri: bool = True,
+                        blur_std_mri: float = 0.1,
                         train_slices: str = 'random',
                         num_slices: int = 5,
                         slice_range: float = 0.15,
-                        prob: float = 0.5):
+                        prob: float = 0.5,
+                        **kwargs):
 
     base_transform = [ToTensor(),
                       AddChannel(),
-                      Resize((image_size, image_size, image_size))]
-    if intensity is None:
+                      Resize((image_size_mri, image_size_mri, image_size_mri))]
+    if intensity_mri is None:
         pass
-    elif intensity == 'scale':
+    elif intensity_mri == 'scale':
         base_transform.insert(1, ScaleIntensity())
-    elif intensity == 'normalize':
+    elif intensity_mri == 'normalize':
         base_transform.insert(1, NormalizeIntensity(nonzero=True))
+    elif intensity_mri == 'simple':
+        base_transform.insert(1, Divide())
     else:
         raise NotImplementedError
 
     train_transform, test_transform = base_transform.copy(), base_transform.copy()
 
-    if crop_size:
+    if crop_size_mri:
         # train_transform.append(RandSpatialCrop(roi_size=(cropsize, cropsize, cropsize), random_size=False))
-        train_transform.append(CenterSpatialCrop(roi_size=(crop_size, crop_size, crop_size)))
-        test_transform.append(CenterSpatialCrop(roi_size=(crop_size, crop_size, crop_size)))
+        train_transform.append(CenterSpatialCrop(roi_size=(crop_size_mri, crop_size_mri, crop_size_mri)))
+        test_transform.append(CenterSpatialCrop(roi_size=(crop_size_mri, crop_size_mri, crop_size_mri)))
 
-    if rotate:
+    if rotate_mri:
         train_transform.append(RandRotate90(prob=prob))
-    if flip:
+    if flip_mri:
         train_transform.append(RandFlip(prob=prob))
-    if blur_std:
-        train_transform.append(RandGaussianNoise(prob=prob, std=blur_std))
+    if blur_std_mri:
+        train_transform.append(RandGaussianNoise(prob=prob, std=blur_std_mri))
 
-    if crop_size is not None:
-        slice_size = crop_size
+    if crop_size_mri is not None:
+        slice_size = crop_size_mri
     else:
-        slice_size = image_size
+        slice_size = image_size_mri
 
     # slice - training
     if train_slices == 'random':
@@ -137,7 +144,7 @@ def make_pet_transforms(image_size: int = 72,
     else:
         raise ValueError
 
-    if affine:
+    if affine_mri:
         import warnings
         warnings.filterwarnings("ignore")
         train_transform.append(RandAffine(rotate_range=(-5.0, 5.0),
@@ -159,49 +166,49 @@ def make_pet_transforms(image_size: int = 72,
     return Compose(train_transform), Compose(test_transform)
 
 
-
-def make_mri_transforms(image_size: int = 72,
-                        intensity: str = 'scale',
-                        crop_size: int = None,
-                        rotate: bool = True,
-                        flip: bool = True,
-                        affine: bool = True,
-                        blur_std: float = 0.1,
+def make_pet_transforms(image_size_pet: int = 72,
+                        intensity_pet: str = 'scale',
+                        crop_size_pet: int = None,
+                        rotate_pet: bool = True,
+                        flip_pet: bool = True,
+                        affine_pet: bool = True,
+                        blur_std_pet: float = 0.1,
                         train_slices: str = 'random',
                         num_slices: int = 5,
                         slice_range: float = 0.15,
-                        prob: float = 0.5):
+                        prob: float = 0.5,
+                        **kwargs):
 
     base_transform = [ToTensor(),
                       AddChannel(),
-                      Resize((image_size, image_size, image_size))]
-    if intensity is None:
+                      Resize((image_size_pet, image_size_pet, image_size_pet))]
+    if intensity_pet is None:
         pass
-    elif intensity == 'scale':
+    elif intensity_pet == 'scale':
         base_transform.insert(1, ScaleIntensity())
-    elif intensity == 'normalize':
+    elif intensity_pet == 'normalize':
         base_transform.insert(1, NormalizeIntensity(nonzero=True))
     else:
         raise NotImplementedError
 
     train_transform, test_transform = base_transform.copy(), base_transform.copy()
 
-    if crop_size:
+    if crop_size_pet:
         # train_transform.append(RandSpatialCrop(roi_size=(cropsize, cropsize, cropsize), random_size=False))
-        train_transform.append(CenterSpatialCrop(roi_size=(crop_size, crop_size, crop_size)))
-        test_transform.append(CenterSpatialCrop(roi_size=(crop_size, crop_size, crop_size)))
+        train_transform.append(CenterSpatialCrop(roi_size=(crop_size_pet, crop_size_pet, crop_size_pet)))
+        test_transform.append(CenterSpatialCrop(roi_size=(crop_size_pet, crop_size_pet, crop_size_pet)))
 
-    if rotate:
+    if rotate_pet:
         train_transform.append(RandRotate90(prob=prob))
-    if flip:
+    if flip_pet:
         train_transform.append(RandFlip(prob=prob))
-    if blur_std:
+    if blur_std_pet:
         train_transform.append(RandGaussianNoise(prob=prob, std=blur_std))
 
-    if crop_size is not None:
-        slice_size = crop_size
+    if crop_size_pet is not None:
+        slice_size = crop_size_pet
     else:
-        slice_size = image_size
+        slice_size = image_size_pet
 
     # slice - training
     if train_slices == 'random':
@@ -215,7 +222,7 @@ def make_mri_transforms(image_size: int = 72,
     else:
         raise ValueError
 
-    if affine:
+    if affine_pet:
         import warnings
         warnings.filterwarnings("ignore")
         train_transform.append(RandAffine(rotate_range=(-5.0, 5.0),
@@ -235,3 +242,22 @@ def make_mri_transforms(image_size: int = 72,
     test_transform.append(ConvertImageDtype(torch.float32))
 
     return Compose(train_transform), Compose(test_transform)
+
+
+if __name__ == '__main__':
+    config = {
+        'image_size_mri': 96,
+        'intensity_mri': 'simple',
+        'crop_size_mri': 64,
+        'rotate_mri': True,
+        'flip_mri': True,
+        'affine_mri': False,
+        'blur_std_mri': False,
+        'train_slices': 'random',
+        'num_slices': 5,
+        'slice_range': 0.10,
+        'prob': 0.5,
+        'others': 'others'
+    }
+    train_trans, test_trans = make_mri_transforms(**config)
+    print(train_trans.transforms)
