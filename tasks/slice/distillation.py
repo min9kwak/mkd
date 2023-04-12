@@ -393,7 +393,7 @@ class Distillation(object):
                     # KL-div
                     kd_loss = F.kl_div(F.log_softmax(logits_s / self.temperature, dim=1),
                                        F.softmax(logits_t / self.temperature, dim=1),
-                                       reduction='mean')
+                                       reduction='batchmean')
                     kd_loss = kd_loss * self.alpha_t2s
 
                 if self.scaler is not None:
@@ -414,6 +414,8 @@ class Distillation(object):
                         desc += f" {k} : {v[:i + 1].mean():.4f} |"
                     pg.update(task, advance=1., description=desc)
                     pg.refresh()
+
+        result = {k: v.mean().item() for k, v in result.items()}
 
         return result
 
@@ -479,6 +481,8 @@ class Distillation(object):
                         desc += f" {k} : {v[:i + 1].mean():.4f} |"
                     pg.update(task, advance=1., description=desc)
                     pg.refresh()
+
+        result = {k: v.mean().item() for k, v in result.items()}
 
         return result
 
