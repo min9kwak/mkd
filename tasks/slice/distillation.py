@@ -393,7 +393,7 @@ class Distillation(object):
                     # KL-div
                     kd_loss = F.kl_div(F.log_softmax(logits_s / self.temperature, dim=1),
                                        F.softmax(logits_t / self.temperature, dim=1),
-                                       reduction='batchmean')
+                                       reduction='mean')
                     kd_loss = kd_loss * self.alpha_t2s
 
                 if self.scaler is not None:
