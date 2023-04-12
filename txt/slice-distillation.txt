@@ -31,6 +31,7 @@
 --mixed_precision
 --add_type add
 --warmup 10
+--feature_kd mse
 --temperature 1.0
 --alpha_t2s 1.0
 --alpha_s2t 1.0

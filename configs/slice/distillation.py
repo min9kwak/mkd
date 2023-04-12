@@ -95,6 +95,7 @@ class SliceDistillationConfig(ConfigBase):
         # Common Representations
         parser.add_argument('--add_type', type=str, default='concat', choices=('add', 'concat'))
         parser.add_argument('--warmup', type=int, default=0)
+        parser.add_argument('--feature_kd', type=str, default='cos', choices=('cos', 'mse'))
         parser.add_argument('--temperature', type=float, default=1.0)
         parser.add_argument('--alpha_t2s', type=float, default=1.0)
         parser.add_argument('--alpha_s2t', type=float, default=1.0)

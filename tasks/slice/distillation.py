@@ -51,6 +51,8 @@ class Distillation(object):
         self.warmup = config.warmup
 
         self.temperature = config.temperature
+        assert config.feature_kd in ['cos', 'mse']
+        self.feature_kd = config.feature_kd
         self.alpha_t2s = config.alpha_t2s
         self.alpha_s2t = config.alpha_s2t
 
@@ -439,17 +441,24 @@ class Distillation(object):
                         h_s_mri = self.networks['encoder_s_mri'](x_mri)
                         h_s_mri = F.adaptive_avg_pool2d(h_s_mri, 1)
                         h_s_mri = h_s_mri.view(h_s_mri.size(0), -1)
-                        h_s_mri = F.normalize(h_s_mri, p=2, dim=1)
 
                     # Teacher Features
                     h_t_mri = self.networks['encoder_t_mri'](x_mri)
                     h_t_mri = F.adaptive_avg_pool2d(h_t_mri, 1)
                     h_t_mri = h_t_mri.view(h_t_mri.size(0), -1)
-                    h_t_mri = F.normalize(h_t_mri, p=2, dim=1)
 
-                    # Cosine Loss
-                    dist = F.cosine_similarity(h_s_mri, h_t_mri, dim=1)
-                    kd_loss = (1 - dist) / (2 * self.temperature ** 2).mean()
+                    # MSE Loss
+                    if self.feature_kd == 'mse':
+                        kd_loss = F.mse_loss(h_t_mri, h_s_mri, reduction="mean")
+                    elif self.feature_kd == 'cos':
+                        # Cosine Loss
+                        h_s_mri = F.normalize(h_s_mri, p=2, dim=1)
+                        h_t_mri = F.normalize(h_t_mri, p=2, dim=1)
+
+                        dist = F.cosine_similarity(h_s_mri, h_t_mri, dim=1)
+                        kd_loss = (1 - dist) / (2 * self.temperature ** 2)
+                        kd_loss = kd_loss.mean()
+
                     kd_loss = kd_loss * self.alpha_s2t
 
                 if self.scaler is not None:
@@ -492,7 +501,7 @@ class Distillation(object):
                     # input data
                     x_pet = torch.concat(batch['pet']).float().to(self.local_rank)
                     x_mri = torch.concat(batch['mri']).float().to(self.local_rank)
-                    y = batch['y'].long().repeat(self.config.num_slices).to(self.local_rank)
+                    y = batch['y'].long().repeat(self.test_num_slices).to(self.local_rank)
 
                     # hidden representations
                     h_pet = self.networks['encoder_t_pet'](x_pet)
@@ -511,9 +520,9 @@ class Distillation(object):
                     pg.update(task, advance=1.)
                     pg.refresh()
 
-                y_true.append(y.chunk(self.config.num_slices)[0].long())
+                y_true.append(y.chunk(self.test_num_slices)[0].long())
                 num_classes = logits.shape[-1]
-                logits = logits.reshape(self.config.num_slices, -1, num_classes).mean(0)
+                logits = logits.reshape(self.test_num_slices, -1, num_classes).mean(0)
                 y_pred.append(logits)
 
         result = {k: v.mean().item() for k, v in result.items()}
@@ -527,6 +536,8 @@ class Distillation(object):
                                            adjusted=adjusted)
         for k, v in clf_result.items():
             result[k] = v
+
+        return result
 
     @staticmethod
     def move_optimizer_states(optimizer: torch.optim.Optimizer, device: int = 0):

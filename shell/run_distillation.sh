@@ -22,6 +22,7 @@ NUM_SLICES=5
 SLICE_RANGE=0.15
 
 WARMUP=0
+FEATURE_KD=cos
 TEMPERATURE=1.0
 ALPHA_T2S=1.0
 ALPHA_S2T=1.0
@@ -70,6 +71,7 @@ do
       --mixed_precision \
       --add_type add \
       --warmup $WARMUP \
+      --feature_kd $FEATURE_KD \
       --temperature $TEMPERATURE \
       --alpha_t2s $ALPHA_T2S \
       --alpha_s2t $ALPHA_S2T
