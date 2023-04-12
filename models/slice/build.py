@@ -30,7 +30,9 @@ def build_networks_multi(config, **kwargs):
     # 1. Encoder
     if 'resnet' in config.encoder_type:
         encoder_mri = ResNetBackbone(name=config.encoder_type, in_channels=1)
+        encoder_pet = ResNetBackbone(name=config.encoder_type, in_channels=1)
     elif 'densenet' in config.encoder_type:
+        encoder_mri = DenseNetBackbone(name=config.encoder_type, in_channels=1)
         encoder_pet = DenseNetBackbone(name=config.encoder_type, in_channels=1)
     else:
         raise ValueError

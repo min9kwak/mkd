@@ -10,22 +10,24 @@ import wandb
 import torch
 import torch.nn as nn
 
-from configs.slice.multi import SliceMultiConfig
-from tasks.slice.multi import Multi
+from configs.slice.distillation import SliceDistillationConfig
+from tasks.slice.distillation import Distillation
 
-from datasets.brain import BrainProcessor, BrainMulti
+from datasets.brain import BrainProcessor, BrainMulti, BrainMRI
 from datasets.slice.transforms import make_mri_transforms, make_pet_transforms
 from models.slice.build import build_networks_multi
 
 from utils.logging import get_rich_logger
 from utils.gpu import set_gpu
 
+from copy import deepcopy
+
 
 def main():
     """Main function for single/distributed linear classification."""
 
-    config = SliceMultiConfig.parse_arguments()
-    config.task = 'Multi-' + config.pet_type.upper()
+    config = SliceDistillationConfig.parse_arguments()
+    config.task = 'Distillation-' + config.pet_type.upper()
 
     if config.server == 'main':
         setattr(config, 'root', 'D:/data/ADNI')
@@ -100,9 +102,10 @@ def main_worker(local_rank: int, config: object):
                                       test_size=config.test_size,
                                       missing_rate=config.missing_rate)
 
-    train_set = BrainMulti(dataset=datasets_dict['mri_pet_complete_train'],
-                           mri_transform=train_transform_mri,
-                           pet_transform=train_transform_pet)
+    train_t_set = BrainMulti(dataset=datasets_dict['mri_pet_complete_train'],
+                             mri_transform=train_transform_mri,
+                             pet_transform=train_transform_pet)
+    train_s_set = BrainMRI(dataset=datasets_dict['mri_total_train'], mri_transform=train_transform_mri)
     validation_set = BrainMulti(dataset=datasets_dict['mri_pet_complete_validation'],
                                 mri_transform=test_transform_mri,
                                 pet_transform=test_transform_pet)
@@ -110,13 +113,15 @@ def main_worker(local_rank: int, config: object):
                           mri_transform=test_transform_mri,
                           pet_transform=test_transform_pet)
 
-    datasets = {'train': train_set, 'validation': validation_set, 'test': test_set}
+    datasets = {'train_t': train_t_set, 'train_s': train_s_set, 'validation': validation_set, 'test': test_set}
 
     # Networks
     networks = build_networks_multi(config=config)
-    networks = {'encoder_pet': networks['encoder_pet'],
-                'encoder_mri': networks['encoder_mri'],
-                'classifier': networks['classifier']}
+    networks = {'encoder_t_pet': networks['encoder_pet'],
+                'encoder_t_mri': networks['encoder_mri'],
+                'classifier_t': networks['classifier'],
+                'encoder_s_mri': deepcopy(networks['encoder_mri']),
+                'classifier_s': deepcopy(networks['classifier'])}
 
     # Cross Entropy Loss Function
     class_weight = None
@@ -125,7 +130,7 @@ def main_worker(local_rank: int, config: object):
     loss_function_ce = nn.CrossEntropyLoss(weight=class_weight, reduction='mean')
 
     # Model (Task)
-    model = Multi(networks=networks)
+    model = Distillation(networks=networks)
     model.prepare(config=config,
                   loss_function_ce=loss_function_ce,
                   local_rank=local_rank)

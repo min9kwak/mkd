@@ -18,7 +18,7 @@ class Multi(object):
     # networks
     # teacher: multi (MRI+PET)  --> PET for Multi
     # student:                  --> MRI for Multi
-    network_names = ['encoder_t', 'encoder_s', 'classifier']
+    network_names = ['encoder_pet', 'encoder_mri', 'classifier']
 
     def __init__(self,
                  networks: dict):
@@ -30,37 +30,25 @@ class Multi(object):
         self.prepared = False
 
     def prepare(self,
-                checkpoint_dir,
+                config: object,
                 loss_function_ce,
-                optimizer: str = 'adamw',
-                learning_rate: float = 0.001,
-                weight_decay: float = 0.0001,
-                cosine_warmup: int = 0,
-                cosine_cycles: int = 1,
-                cosine_min_lr: float = 0.0,
-                epochs: int = 100,
-                batch_size: int = 16,
-                num_workers: int = 4,
-                distributed: bool = False,
                 local_rank: int = 0,
-                add_type: str = 'concat',
-                mixed_precision: bool = True,
-                enable_wandb: bool = True,
                 **kwargs):
 
         # Set attributes
-        self.checkpoint_dir = checkpoint_dir
+        self.config = config
+
+        self.checkpoint_dir = config.checkpoint_dir
         self.loss_function_ce = loss_function_ce
-        self.epochs = epochs
-        self.batch_size = batch_size
-        self.num_workers = num_workers
-        self.distributed = distributed
+        self.epochs = config.epochs
+        self.batch_size = config.batch_size
+        self.num_workers = config.num_workers
+        self.distributed = config.distributed
         self.local_rank = local_rank
-        assert add_type in ['concat', 'add']
-        self.add_type = add_type
-        self.mixed_precision = mixed_precision
-        self.enable_wandb = enable_wandb
-        self.config = kwargs.get('config', None)
+        assert config.add_type in ['concat', 'add']
+        self.add_type = config.add_type
+        self.mixed_precision = config.mixed_precision
+        self.enable_wandb = config.enable_wandb
 
         if self.config.train_slices == 'random':
             self.test_num_slices = 3
@@ -71,21 +59,21 @@ class Multi(object):
         else:
             raise ValueError
 
-        if distributed:
+        if self.distributed:
             raise NotImplementedError
         else:
             _ = [v.to(self.local_rank) for k, v in self.networks.items()]
 
         # Optimization setting
-        self.optimizer = get_optimizer(params=[{'params': self.networks['encoder_t'].parameters()},
-                                               {'params': self.networks['encoder_s'].parameters()},
+        self.optimizer = get_optimizer(params=[{'params': self.networks['encoder_pet'].parameters()},
+                                               {'params': self.networks['encoder_mri'].parameters()},
                                                {'params': self.networks['classifier'].parameters()}],
-                                       name=optimizer,
-                                       lr=learning_rate,
-                                       weight_decay=weight_decay)
-        self.scheduler = get_cosine_scheduler(self.optimizer, epochs=self.epochs, warmup_steps=cosine_warmup,
-                                              cycles=cosine_cycles, min_lr=cosine_min_lr)
-        self.scaler = torch.cuda.amp.GradScaler() if mixed_precision else None
+                                       name=config.optimizer,
+                                       lr=config.learning_rate,
+                                       weight_decay=config.weight_decay)
+        self.scheduler = get_cosine_scheduler(self.optimizer, epochs=self.epochs, warmup_steps=config.cosine_warmup,
+                                              cycles=config.cosine_cycles, min_lr=config.cosine_min_lr)
+        self.scaler = torch.cuda.amp.GradScaler() if config.mixed_precision else None
 
         # Ready to train
         self.prepared = True
@@ -146,7 +134,7 @@ class Multi(object):
                 wandb.log(epoch_history)
 
             # Save best model checkpoint
-            eval_loss = test_history['total_loss']
+            eval_loss = test_history['cross_entropy']
             if eval_loss <= best_eval_loss:
                 best_eval_loss = eval_loss
                 best_epoch = epoch
@@ -202,8 +190,7 @@ class Multi(object):
 
         # Logging
         steps = len(data_loader)
-        result = {'total_loss': torch.zeros(steps, device=self.local_rank),
-                  'cross_entropy': torch.zeros(steps, device=self.local_rank)}
+        result = {'cross_entropy': torch.zeros(steps, device=self.local_rank)}
 
         with get_rich_pbar(transient=True, auto_refresh=False) as pg:
 
@@ -214,33 +201,30 @@ class Multi(object):
             for i, batch in enumerate(data_loader):
                 with torch.cuda.amp.autocast(self.mixed_precision):
                     # input data
-                    x_t = torch.concat(batch['pet']).float().to(self.local_rank)
-                    x_s = torch.concat(batch['mri']).float().to(self.local_rank)
+                    x_pet = torch.concat(batch['pet']).float().to(self.local_rank)
+                    x_mri = torch.concat(batch['mri']).float().to(self.local_rank)
                     y = batch['y'].long().repeat(self.config.num_slices).to(self.local_rank)
 
                     # hidden representations
-                    h_t = self.networks['encoder_t'](x_t)
-                    h_s = self.networks['encoder_s'](x_s)
+                    h_pet = self.networks['encoder_pet'](x_pet)
+                    h_mri = self.networks['encoder_mri'](x_mri)
                     if self.add_type == 'concat':
-                        h_common = torch.concat([h_t, h_s], dim=1)
+                        h_common = torch.concat([h_pet, h_mri], dim=1)
                     else:
-                        h_common = h_t + h_s
-
+                        h_common = h_pet + h_mri
                     logits = self.networks['classifier'](h_common)
                     loss_ce = self.loss_function_ce(logits, y)
-                    loss = loss_ce
 
                 if self.scaler is not None:
-                    self.scaler.scale(loss).backward()
+                    self.scaler.scale(loss_ce).backward()
                     self.scaler.step(self.optimizer)
                     self.scaler.update()
                 else:
-                    loss.backward()
+                    loss_ce.backward()
                     self.optimizer.step()
                 self.optimizer.zero_grad()
 
                 # save monitoring values
-                result['total_loss'][i] = loss.detach()
                 result['cross_entropy'][i] = loss_ce.detach()
 
                 if self.local_rank == 0:
@@ -277,8 +261,7 @@ class Multi(object):
 
         # Logging
         steps = len(data_loader)
-        result = {'total_loss': torch.zeros(steps, device=self.local_rank),
-                  'cross_entropy': torch.zeros(steps, device=self.local_rank)}
+        result = {'cross_entropy': torch.zeros(steps, device=self.local_rank)}
 
         with get_rich_pbar(transient=True, auto_refresh=False) as pg:
 
@@ -289,24 +272,22 @@ class Multi(object):
             for i, batch in enumerate(data_loader):
                 with torch.cuda.amp.autocast(self.mixed_precision):
                     # input data
-                    x_t = torch.concat(batch['pet']).float().to(self.local_rank)
-                    x_s = torch.concat(batch['mri']).float().to(self.local_rank)
+                    x_pet = torch.concat(batch['pet']).float().to(self.local_rank)
+                    x_mri = torch.concat(batch['mri']).float().to(self.local_rank)
                     y = batch['y'].long().repeat(self.test_num_slices).to(self.local_rank)
 
                     # hidden representations
-                    h_t = self.networks['encoder_t'](x_t)
-                    h_s = self.networks['encoder_s'](x_s)
+                    h_pet = self.networks['encoder_pet'](x_pet)
+                    h_mri = self.networks['encoder_mri'](x_mri)
                     if self.add_type == 'concat':
-                        h_common = torch.concat([h_t, h_s], dim=1)
+                        h_common = torch.concat([h_pet, h_mri], dim=1)
                     else:
-                        h_common = h_t + h_s
+                        h_common = h_pet + h_mri
 
                     logits = self.networks['classifier'](h_common)
                     loss_ce = self.loss_function_ce(logits, y)
-                    loss = loss_ce
 
                 # save monitoring values
-                result['total_loss'][i] = loss.detach()
                 result['cross_entropy'][i] = loss_ce.detach()
 
                 if self.local_rank == 0:

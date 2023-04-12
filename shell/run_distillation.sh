@@ -2,7 +2,6 @@ echo "Experiments Started"
 SERVER=main
 GPUS=0
 
-DATA_TYPE=multi
 MRI_TYPE=template
 PET_TYPE=FBP
 IMAGE_SIZE=72
@@ -10,6 +9,8 @@ CROP_SIZE=64
 RANDOM_STATE=2023
 
 INTENSITY=scale
+
+ENCODER_TYPE=resnet50
 
 EPOCHS=100
 BATCH_SIZE=16
@@ -20,16 +21,21 @@ TRAIN_SLICES=random
 NUM_SLICES=5
 SLICE_RANGE=0.15
 
+WARMUP=0
+TEMPERATURE=1.0
+ALPHA_T2S=1.0
+ALPHA_S2T=1.0
+
+
 for RANDOM_STATE in 2021 2022 2023
 do
-	for LEARNING_RATE in 0.001
+	for WARMUP in 0 10
 	do
-	  for ENCODER_TYPE in resnet50
+	  for TEMPERATURE in 1.0 2.0
 	  do
-      python ./run_multi.py \
+      python ./run_distillation.py \
       --gpus $GPUS \
       --server $SERVER \
-      --data_type $DATA_TYPE \
       --pet_type $PET_TYPE \
       --data_file labels/data_info_multi.csv \
       --mri_type $MRI_TYPE \
@@ -62,7 +68,11 @@ do
       --enable_wandb \
       --balance \
       --mixed_precision \
-      --add_type add
+      --add_type add \
+      --warmup $WARMUP \
+      --temperature $TEMPERATURE \
+      --alpha_t2s $ALPHA_T2S \
+      --alpha_s2t $ALPHA_S2T
     done
 	done
 done

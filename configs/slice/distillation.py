@@ -2,10 +2,10 @@ import argparse
 from configs.base import ConfigBase
 
 
-class SliceMultiConfig(ConfigBase):
+class SliceDistillationConfig(ConfigBase):
 
     def __init__(self, args=None, **kwargs):
-        super(SliceMultiConfig, self).__init__(args, **kwargs)
+        super(SliceDistillationConfig, self).__init__(args, **kwargs)
 
     @staticmethod
     def data_parser() -> argparse.ArgumentParser:
@@ -13,7 +13,6 @@ class SliceMultiConfig(ConfigBase):
 
         parser = argparse.ArgumentParser("Data", add_help=False)
         parser.add_argument('--data_file', type=str, default='labels/data_info_multi.csv')
-        parser.add_argument('--data_type', type=str, default='multi')
         parser.add_argument('--pet_type', type=str, choices=('FDG', 'FBP'), default='FBP')
         parser.add_argument('--mci_only', action='store_true')
 
@@ -90,10 +89,14 @@ class SliceMultiConfig(ConfigBase):
 
     @staticmethod
     def task_specific_parser() -> argparse.ArgumentParser:
-        parser = argparse.ArgumentParser('Multi', add_help=False)
+        parser = argparse.ArgumentParser('Distillation', add_help=False)
         parser.add_argument('--balance', action='store_true', help='apply class balance weight')
 
         # Common Representations
         parser.add_argument('--add_type', type=str, default='concat', choices=('add', 'concat'))
+        parser.add_argument('--warmup', type=int, default=0)
+        parser.add_argument('--temperature', type=float, default=1.0)
+        parser.add_argument('--alpha_t2s', type=float, default=1.0)
+        parser.add_argument('--alpha_s2t', type=float, default=1.0)
 
         return parser

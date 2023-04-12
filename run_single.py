@@ -118,7 +118,7 @@ def main_worker(local_rank: int, config: object):
     datasets = {'train': train_set, 'validation': validation_set, 'test': test_set}
 
     # Networks
-    networks = build_networks_single(config)
+    networks = build_networks_single(config=config)
 
     # Cross Entropy Loss Function
     class_weight = None

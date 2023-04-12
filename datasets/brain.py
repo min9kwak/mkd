@@ -40,6 +40,9 @@ class BrainProcessor(object):
 
         data = pd.read_csv(os.path.join(self.root, self.data_file), converters={'RID': str, 'Conv': int})
         data = data.loc[data.IS_FILE]
+        with open(os.path.join(self.root, 'labels/mri_abnormal.pkl'), 'rb') as fb:
+            mri_abnormal = pickle.load(fb)
+        data = data.loc[~data.MRI.isin(mri_abnormal)]
         data['PET'] = data[self.pet_type]
 
         data = data.loc[data['Conv'].isin([0, 1])].reset_index(drop=True)

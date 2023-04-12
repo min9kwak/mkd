@@ -132,6 +132,7 @@ dmypy.json
 checkpoints/
 wandb/
 script/
+/result.xlsx
 
 # IDE
 .vscode
