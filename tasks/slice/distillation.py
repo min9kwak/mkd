@@ -146,11 +146,14 @@ class Distillation(object):
                 ):
                     for k, v in history.items():
                         epoch_history[f'{mode}/{k}'] = v
-            validation_history = self.evaluate(loaders['validation'], adjusted=False)
-            test_history = self.evaluate(loaders['test'], adjusted=False)
+            validation_complete_history = self.evaluate_complete(loaders['validation'], adjusted=False)
+            validation_incomplete_history = self.evaluate_incomplete(loaders['validation'], adjusted=False)
+            test_complete_history = self.evaluate_complete(loaders['test'], adjusted=False)
+            test_incomplete_history = self.evaluate_incomplete(loaders['test'], adjusted=False)
 
             # Logging
-            for mode, history in zip(['validation', 'test'], [validation_history, test_history]):
+            for mode, history in zip(['validation-complete', 'validation-incomplete', 'test-complete', 'test-incomplete'],
+                                     [validation_complete_history, validation_incomplete_history, test_complete_history, test_incomplete_history]):
                 for k, v in history.items():
                     epoch_history[f'{mode}/{k}'] = v
 
@@ -174,7 +177,7 @@ class Distillation(object):
                 wandb.log(epoch_history)
 
             # Save best model checkpoint
-            eval_loss = test_history['cross_entropy_t']
+            eval_loss = test_incomplete_history['cross_entropy_s']
             if eval_loss <= best_eval_loss:
                 best_eval_loss = eval_loss
                 best_epoch = epoch
@@ -198,14 +201,18 @@ class Distillation(object):
         self.save_checkpoint(ckpt, epoch=epoch)
 
         # adjusted evaluation (last)
-        validation_history = self.evaluate(loaders['validation'], adjusted=True)
-        test_history = self.evaluate(loaders['test'], adjusted=True)
+        validation_complete_history = self.evaluate_complete(loaders['validation'], adjusted=True)
+        validation_incomplete_history = self.evaluate_incomplete(loaders['validation'], adjusted=True)
+        test_complete_history = self.evaluate_complete(loaders['test'], adjusted=True)
+        test_incomplete_history = self.evaluate_incomplete(loaders['test'], adjusted=True)
 
+        # Logging
         last_history = collections.defaultdict(dict)
-        for k, v in validation_history.items():
-            last_history[f'adjusted-last/validation/{k}'] = v
-        for k, v in test_history.items():
-            last_history[f'adjusted-last/test/{k}'] = v
+        for mode, history in zip(['validation-complete', 'validation-incomplete', 'test-complete', 'test-incomplete'],
+                                 [validation_complete_history, validation_incomplete_history, test_complete_history,
+                                  test_incomplete_history]):
+            for k, v in history.items():
+                last_history[f'adjusted-last/{mode}/{k}'] = v
         if self.enable_wandb:
             wandb.log(last_history)
 
@@ -214,14 +221,18 @@ class Distillation(object):
         for k, v in self.networks.items():
             v.load_weights_from_checkpoint(path=ckpt, key=k)
 
-        validation_history = self.evaluate(loaders['validation'], adjusted=True)
-        test_history = self.evaluate(loaders['test'], adjusted=True)
+        validation_complete_history = self.evaluate_complete(loaders['validation'], adjusted=True)
+        validation_incomplete_history = self.evaluate_incomplete(loaders['validation'], adjusted=True)
+        test_complete_history = self.evaluate_complete(loaders['test'], adjusted=True)
+        test_incomplete_history = self.evaluate_incomplete(loaders['test'], adjusted=True)
 
+        # Logging
         best_history = collections.defaultdict(dict)
-        for k, v in validation_history.items():
-            best_history[f'adjusted-best/validation/{k}'] = v
-        for k, v in test_history.items():
-            best_history[f'adjusted-best/test/{k}'] = v
+        for mode, history in zip(['validation-complete', 'validation-incomplete', 'test-complete', 'test-incomplete'],
+                                 [validation_complete_history, validation_incomplete_history, test_complete_history,
+                                  test_incomplete_history]):
+            for k, v in history.items():
+                best_history[f'adjusted-best/{mode}/{k}'] = v
         if self.enable_wandb:
             wandb.log(best_history)
 
@@ -487,7 +498,58 @@ class Distillation(object):
         return result
 
     @torch.no_grad()
-    def evaluate(self, data_loder, adjusted=False):
+    def evaluate_incomplete(self, data_loder, adjusted=False):
+
+        self._set_learning_phase(network_type='teacher', train=False)
+        self._set_learning_phase(network_type='student', train=False)
+
+        steps = len(data_loder)
+        result = {'cross_entropy_s': torch.zeros(steps, device=self.local_rank)}
+
+        # 1. Training Teacher Model
+        with get_rich_pbar(transient=True, auto_refresh=False) as pg:
+            if self.local_rank == 0:
+                task = pg.add_task(f"[bold red] Evaluating...", total=steps)
+            y_true, y_pred = [], []
+            for i, batch in enumerate(data_loder):
+                with torch.cuda.amp.autocast(self.mixed_precision):
+                    # input data
+                    x_mri = torch.concat(batch['mri']).float().to(self.local_rank)
+                    y = batch['y'].long().repeat(self.test_num_slices).to(self.local_rank)
+
+                    # hidden representations
+                    h = self.networks['encoder_s_mri'](x_mri)
+                    logits = self.networks['classifier_s'](h)
+                    loss_ce = self.loss_function_ce(logits, y)
+
+                # save monitoring values
+                result['cross_entropy_s'][i] = loss_ce.detach()
+
+                if self.local_rank == 0:
+                    pg.update(task, advance=1.)
+                    pg.refresh()
+
+                y_true.append(y.chunk(self.test_num_slices)[0].long())
+                num_classes = logits.shape[-1]
+                logits = logits.reshape(self.test_num_slices, -1, num_classes).mean(0)
+                y_pred.append(logits)
+
+        result = {k: v.mean().item() for k, v in result.items()}
+
+        # enforce to float32: accuracy and macro f1 score
+        y_true = torch.cat(y_true, dim=0)
+        y_pred = torch.cat(y_pred, dim=0).to(torch.float32)
+
+        clf_result = classification_result(y_true=y_true.cpu().numpy(),
+                                           y_pred=y_pred.softmax(1).detach().cpu().numpy(),
+                                           adjusted=adjusted)
+        for k, v in clf_result.items():
+            result[k] = v
+
+        return result
+
+    @torch.no_grad()
+    def evaluate_complete(self, data_loder, adjusted=False):
 
         self._set_learning_phase(network_type='teacher', train=False)
         self._set_learning_phase(network_type='student', train=False)
