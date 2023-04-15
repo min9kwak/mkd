@@ -68,17 +68,6 @@ def main_worker(local_rank: int, config: object):
     config.batch_size = config.batch_size // config.world_size
     config.num_workers = config.num_workers // config.num_gpus_per_node
 
-    # Logging
-    logfile = os.path.join(config.checkpoint_dir, 'main.log')
-    logger = get_rich_logger(logfile=logfile)
-    if config.enable_wandb:
-        wandb.init(
-            name=f'{config.task} : {config.hash}',
-            project='incomplete-kd',
-            config=config.__dict__,
-            settings=wandb.Settings(code_dir=".")
-        )
-
     # Transform
     train_transform_mri, test_transform_mri = make_mri_transforms(
         image_size_mri=config.image_size_mri, intensity_mri=config.intensity_mri, crop_size_mri=config.crop_size_mri,
@@ -101,6 +90,7 @@ def main_worker(local_rank: int, config: object):
     datasets_dict = processor.process(validation_size=config.validation_size,
                                       test_size=config.test_size,
                                       missing_rate=config.missing_rate)
+    setattr(config, 'current_missing_rate', processor.current_missing_rate)
 
     train_t_set = BrainMulti(dataset=datasets_dict['mri_pet_complete_train'],
                              mri_transform=train_transform_mri,
@@ -128,6 +118,17 @@ def main_worker(local_rank: int, config: object):
     if config.balance:
         class_weight = torch.tensor(processor.class_weight_pet, dtype=torch.float).to(local_rank)
     loss_function_ce = nn.CrossEntropyLoss(weight=class_weight, reduction='mean')
+
+    # Logging
+    logfile = os.path.join(config.checkpoint_dir, 'main.log')
+    logger = get_rich_logger(logfile=logfile)
+    if config.enable_wandb:
+        wandb.init(
+            name=f'{config.task} : {config.hash}',
+            project='incomplete-kd',
+            config=config.__dict__,
+            settings=wandb.Settings(code_dir=".")
+        )
 
     # Model (Task)
     model = Distillation(networks=networks)

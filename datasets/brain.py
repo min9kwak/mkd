@@ -34,7 +34,7 @@ class BrainProcessor(object):
                              'APOE Status', 'MMSCORE']
                              # , 'CDGLOBAL', 'SUM BOXES']
 
-        self.missing_rate = None
+        self.current_missing_rate = None
 
     def process(self, validation_size: float = 0.1, test_size: float = 0.1, missing_rate: float = None):
 
@@ -84,7 +84,7 @@ class BrainProcessor(object):
 
         # 2. Missing rate
         # 2-1. Current missing rate
-        current_missing_rate = np.sum(~data['PET_available']) / len(data_train)
+        current_missing_rate = np.sum(~data_train['PET_available']) / len(data_train)
 
         # 2-2. Adjust missing rate
         if missing_rate is not None:
@@ -100,10 +100,8 @@ class BrainProcessor(object):
             data_train.loc[adjust_index, 'PET'] = np.nan
             data_train.loc[adjust_index, 'PET_available'] = False
 
-        else:
-            missing_rate = current_missing_rate
-
-        self.missing_rate = missing_rate
+        current_missing_rate = np.sum(~data_train['PET_available']) / len(data_train)
+        self.current_missing_rate = current_missing_rate
 
         # 3. Split data into complete and MRI-only
         # 3-1. Incomplete MRI-only training
@@ -303,7 +301,7 @@ if __name__ == '__main__':
                                data_file='labels/data_info_multi.csv',
                                pet_type='FBP',
                                random_state=2023)
-    datasets = processor.process(validation_size=0.1, test_size=0.1, missing_rate=None)
+    datasets = processor.process(validation_size=0.1, test_size=0.1, missing_rate=0.40)
 
     for k, v in datasets.items():
         print(k, f": {len(v['y'])} observations")

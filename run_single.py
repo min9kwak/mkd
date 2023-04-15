@@ -66,17 +66,6 @@ def main_worker(local_rank: int, config: object):
     config.batch_size = config.batch_size // config.world_size
     config.num_workers = config.num_workers // config.num_gpus_per_node
 
-    # Logging
-    logfile = os.path.join(config.checkpoint_dir, 'main.log')
-    logger = get_rich_logger(logfile=logfile)
-    if config.enable_wandb:
-        wandb.init(
-            name=f'{config.task} : {config.hash}',
-            project='incomplete-kd',
-            config=config.__dict__,
-            settings=wandb.Settings(code_dir=".")
-        )
-
     # Transform
     if config.data_type == 'mri':
         train_transform, test_transform = make_mri_transforms(
@@ -103,6 +92,7 @@ def main_worker(local_rank: int, config: object):
     datasets_dict = processor.process(validation_size=config.validation_size,
                                       test_size=config.test_size,
                                       missing_rate=config.missing_rate)
+    setattr(config, 'current_missing_rate', processor.current_missing_rate)
 
     if config.data_type == 'mri':
         train_set = BrainMRI(dataset=datasets_dict['mri_total_train'], mri_transform=train_transform)
@@ -128,6 +118,17 @@ def main_worker(local_rank: int, config: object):
         else:
             class_weight = torch.tensor(processor.class_weight_pet, dtype=torch.float).to(local_rank)
     loss_function_ce = nn.CrossEntropyLoss(weight=class_weight, reduction='mean')
+
+    # Logging
+    logfile = os.path.join(config.checkpoint_dir, 'main.log')
+    logger = get_rich_logger(logfile=logfile)
+    if config.enable_wandb:
+        wandb.init(
+            name=f'{config.task} : {config.hash}',
+            project='incomplete-kd',
+            config=config.__dict__,
+            settings=wandb.Settings(code_dir=".")
+        )
 
     # Model (Task)
     model = Single(networks=networks, data_type=config.data_type)
