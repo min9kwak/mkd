@@ -24,15 +24,15 @@ SLICE_RANGE=0.15
 WARMUP=0
 FEATURE_KD=cos
 TEMPERATURE=1.0
-ALPHA_T2S=1.0
-ALPHA_S2T=1.0
+ALPHA_T2S=3.0
+ALPHA_S2T=3.0
 
 
-for RANDOM_STATE in 2021 2022 2023
+for WARMUP in 0 20
 do
-	for WARMUP in 0 10
+	for RANDOM_STATE in 2021 2022 2023
 	do
-	  for TEMPERATURE in 1.0 2.0
+	  for FEATURE_KD in mse
 	  do
       python ./run_distillation.py \
       --gpus $GPUS \
