@@ -40,9 +40,6 @@ def main():
     setattr(config, 'world_size', world_size)
     setattr(config, 'distributed', distributed)
 
-    rich.print(config.__dict__)
-    config.save()
-
     np.random.seed(config.random_state)
     torch.manual_seed(config.random_state)
 
@@ -67,6 +64,15 @@ def main_worker(local_rank: int, config: object):
     config.num_workers = config.num_workers // config.num_gpus_per_node
 
     # Transform
+    if config.train_slices == 'random':
+        pass
+    elif config.train_slices == 'fixed':
+        setattr(config, 'num_slices', 3)
+    elif config.train_slices in ['sagittal', 'coronal', 'axial']:
+        setattr(config, 'num_slices', 1)
+    else:
+        raise ValueError
+
     if config.data_type == 'mri':
         train_transform, test_transform = make_mri_transforms(
             image_size_mri=config.image_size, intensity_mri=config.intensity, crop_size_mri=config.crop_size,
@@ -129,6 +135,9 @@ def main_worker(local_rank: int, config: object):
             config=config.__dict__,
             settings=wandb.Settings(code_dir=".")
         )
+    if local_rank == 0:
+        rich.print(config.__dict__)
+        config.save()
 
     # Model (Task)
     model = Single(networks=networks, data_type=config.data_type)
