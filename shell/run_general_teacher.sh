@@ -36,7 +36,7 @@ do
       --crop_size_mri $CROP_SIZE \
       --crop_size_pet $CROP_SIZE \
       --train_slices $TRAIN_SLICES \
-      --encoder_type $ENCODER_TYPE \
+      --extractor_type $ENCODER_TYPE \
       --small_kernel $SMALL_KERNEL \
       --random_state $RANDOM_STATE \
       --hidden $HIDDEN \
