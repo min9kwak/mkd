@@ -5,6 +5,7 @@ GPUS=0
 PET_TYPE=FBP
 CROP_SIZE=64
 TRAIN_SLICES=fixed
+MISSING_RATE=-1
 
 ENCODER_TYPE=resnet50
 SMALL_KERNEL=True
@@ -33,6 +34,7 @@ do
       --server $SERVER \
       --pet_type $PET_TYPE \
       --data_file labels/data_info_multi.csv \
+      --missing_rate $MISSING_RATE \
       --crop_size_mri $CROP_SIZE \
       --crop_size_pet $CROP_SIZE \
       --train_slices $TRAIN_SLICES \

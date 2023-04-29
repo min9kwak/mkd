@@ -86,6 +86,9 @@ def main_worker(local_rank: int, config: object):
         slice_range=config.slice_range, prob=config.prob)
 
     # Dataset
+    if config.missing_rate == -1.0:
+        setattr(config, 'missing_rate', None)
+
     processor = BrainProcessor(root=config.root,
                                data_file=config.data_file,
                                mri_type=config.mri_type,
