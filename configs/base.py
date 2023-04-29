@@ -7,6 +7,19 @@ import argparse
 import datetime
 
 
+def str2bool(v):
+    """
+    string to boolean
+    ex) parser.add_argument('--argument', type=str2bool, default=True)
+    """
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
+
+
 class ConfigBase(object):
     def __init__(self, args: argparse.Namespace = None, **kwargs):
 
@@ -126,5 +139,5 @@ class ConfigBase(object):
         parser = argparse.ArgumentParser("Logging", add_help=False)
         parser.add_argument('--checkpoint_root', type=str, default='./checkpoints/', help='Top-level directory of checkpoints.')
         parser.add_argument('--save_every', type=int, default=200, help='Save model checkpoint every `save_every` epochs.')
-        parser.add_argument('--enable_wandb', action='store_true', help='Use Weights & Biases plugin.')
+        parser.add_argument('--enable_wandb', type=str2bool, default=True, help='Use Weights & Biases plugin.')
         return parser

@@ -156,19 +156,19 @@ def relu_inplace(module, flag=False):
 
 if __name__ == '__main__':
 
-    from models.slice.head import LinearClassifier
+    from models.slice.head import GAPLinearClassifier
 
     x = torch.randn(8, 1, 64, 64)
 
     backbone = ResNetBackbone(name='resnet50')
-    classifier = LinearClassifier(name='resnet50', in_channels=backbone.out_channels, num_features=2)
+    classifier = GAPLinearClassifier(name='resnet50', in_channels=backbone.out_channels, n_classes=2)
     out = backbone(x)
     print(out.shape)
     out = classifier(out)
     print(out.shape)
 
     backbone = DenseNetBackbone(name='densenet121')
-    classifier = LinearClassifier(name='densenet121', in_channels=backbone.out_channels, num_features=2)
+    classifier = GAPLinearClassifier(name='densenet121', in_channels=backbone.out_channels, n_classes=2)
     out = backbone(x)
     print(out.shape)
     out = classifier(out)
