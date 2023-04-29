@@ -28,7 +28,7 @@ do
   do
 	  for LEARNING_RATE in 0.0001 0.001
 	  do
-      python ./run_distillation.py \
+      python ./run_general_teacher.py \
       --gpus $GPUS \
       --server $SERVER \
       --pet_type $PET_TYPE \
