@@ -44,29 +44,35 @@ class GAPHeadBase(HeadBase):
         assert isinstance(in_channels, int), "Number of output feature maps of backbone."
 
 
-class LinearClassifier(GAPHeadBase):
-    def __init__(self, name: str, in_channels: int, num_features: int, dropout: float = 0.0):
+class LinearHeadBase(HeadBase):
+    def __init__(self, in_channels: int, output_size: int):
+        super(LinearHeadBase, self).__init__(output_size)
+        assert isinstance(in_channels, int), "Number of output feature maps of backbone."
+
+
+class GAPLinearClassifier(GAPHeadBase):
+    def __init__(self, name: str, in_channels: int, n_classes: int, dropout: float = 0.0):
         """
         Arguments:
             in_channels: int, number of input feature maps.
-            num_features: int, number of output features.
+            n_classes: int, number of output features.
         """
-        super(LinearClassifier, self).__init__(in_channels, num_features)
+        super(GAPLinearClassifier, self).__init__(in_channels, n_classes)
 
         self.name = name
         self.in_channels = in_channels
-        self.num_features = num_features
+        self.n_classes = n_classes
         self.dropout = dropout
         self.layers = self.make_layers(
             name=self.name,
             in_channels=self.in_channels,
-            num_features=self.num_features,
+            n_classes=self.n_classes,
             dropout=self.dropout,
         )
         initialize_weights(self.layers)
 
     @staticmethod
-    def make_layers(name: str, in_channels: int, num_features: int, dropout: float = 0.0):
+    def make_layers(name: str, in_channels: int, n_classes: int, dropout: float = 0.0):
         if 'resnet' in name:
             layers = nn.Sequential(
                 collections.OrderedDict(
@@ -74,7 +80,7 @@ class LinearClassifier(GAPHeadBase):
                         ('gap', nn.AdaptiveAvgPool2d(1)),
                         ('flatten', nn.Flatten(1)),
                         ('dropout', nn.Dropout(p=dropout)),
-                        ('linear', nn.Linear(in_channels, num_features))
+                        ('linear', nn.Linear(in_channels, n_classes))
                     ]
                 )
             )
@@ -86,7 +92,7 @@ class LinearClassifier(GAPHeadBase):
                         ('gap', nn.AdaptiveAvgPool2d(1)),
                         ('flatten', nn.Flatten(1)),
                         ('dropout', nn.Dropout(p=dropout)),
-                        ('linear', nn.Linear(in_channels, num_features))
+                        ('linear', nn.Linear(in_channels, n_classes))
                     ]
                 )
             )
@@ -101,3 +107,125 @@ class LinearClassifier(GAPHeadBase):
     @property
     def num_parameters(self):
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
+
+
+class GAPLinearProjector(GAPHeadBase):
+    # https://github.com/declare-lab/MISA/blob/master/src/models.py
+    def __init__(self, name: str, in_channels: int, out_channels: int):
+        super(GAPLinearProjector, self).__init__(in_channels, out_channels)
+
+        self.name = name
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+
+        self.layers = self.make_layers(self.name, self.in_channels, self.out_channels)
+        initialize_weights(self.layers)
+
+    @staticmethod
+    def make_layers(name: str, in_channels: int, out_channels: int):
+        if 'resnet' in name:
+            layers = nn.Sequential(
+                collections.OrderedDict(
+                    [
+                        ('gap', nn.AdaptiveAvgPool2d(1)),
+                        ('flatten', nn.Flatten(1)),
+                        # add nn.LayerNorm...? see extract_features of MISA
+                        ('linear', nn.Linear(in_channels, out_channels)),
+                        ('relu', nn.ReLU(inplace=False)),
+                        ('norm', nn.LayerNorm(out_channels))
+                    ]
+                )
+            )
+        elif 'densenet' in name:
+            layers = nn.Sequential(
+                collections.OrderedDict(
+                    [
+                        ('relu1', nn.ReLU(inplace=False)),
+                        ('gap', nn.AdaptiveAvgPool2d(1)),
+                        ('flatten', nn.Flatten(1)),
+                        ('linear', nn.Linear(in_channels, out_channels)),
+                        ('relu2', nn.ReLU(inplace=False)),
+                        ('norm', nn.LayerNorm(out_channels))
+                    ]
+                )
+            )
+        else:
+            raise ValueError
+
+        return layers
+
+    def forward(self, x: torch.Tensor):
+        return self.layers(x)
+
+
+class LinearEncoder(LinearHeadBase):
+    def __init__(self, in_channels: int, out_channels: int):
+        super(LinearEncoder, self).__init__(in_channels, out_channels)
+
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.layers = nn.Sequential(
+            collections.OrderedDict(
+                [
+                    ('linear', nn.Linear(self.in_channels, self.out_channels)),
+                    ('sigmoid', nn.Sigmoid())
+                ]
+            )
+        )
+        initialize_weights(self.layers)
+
+    def forward(self, x: torch.Tensor):
+        return self.layers(x)
+
+
+class LinearDecoder(LinearHeadBase):
+    def __init__(self, in_channels: int, out_channels: int):
+        super(LinearDecoder, self).__init__(in_channels, out_channels)
+
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.layers = nn.Sequential(
+            collections.OrderedDict(
+                [
+                    ('linear', nn.Linear(self.in_channels, self.out_channels))
+                ]
+            )
+        )
+        initialize_weights(self.layers)
+
+    def forward(self, x: torch.Tensor):
+        return self.layers(x)
+
+
+class Classifier(LinearHeadBase):
+    def __init__(self, in_channels: int, n_classes: int, mlp: bool = False, dropout: float = 0.0):
+        super(Classifier, self).__init__(in_channels, n_classes)
+        self.in_channels = in_channels
+        self.n_classes = n_classes
+        self.mlp = mlp
+        self.dropout = dropout
+
+        if self.mlp:
+            self.layers = nn.Sequential(
+                collections.OrderedDict(
+                    [
+                        ('linear1', nn.Linear(self.in_channels, self.in_channels // 2)),
+                        ('dropout', nn.Dropout(p=self.dropout)),
+                        ('relu', nn.ReLU(inplace=False)),
+                        ('linear2', nn.Linear(self.in_channels // 2, self.n_classes))
+                    ]
+                )
+            )
+        else:
+            self.layers = nn.Sequential(
+                collections.OrderedDict(
+                    [
+                        ('dropout', nn.Dropout(p=self.dropout)),
+                        ('linear', nn.Linear(self.in_channels, self.n_classes))
+                    ]
+                )
+            )
+        initialize_weights(self.layers)
+
+    def forward(self, x: torch.Tensor):
+        return self.layers(x)
