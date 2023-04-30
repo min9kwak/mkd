@@ -129,7 +129,6 @@ class GAPLinearProjector(GAPHeadBase):
                     [
                         ('gap', nn.AdaptiveAvgPool2d(1)),
                         ('flatten', nn.Flatten(1)),
-                        # add nn.LayerNorm...? see extract_features of MISA
                         ('linear', nn.Linear(in_channels, out_channels)),
                         ('relu', nn.ReLU(inplace=False)),
                         ('norm', nn.LayerNorm(out_channels))
@@ -225,6 +224,19 @@ class Classifier(LinearHeadBase):
                     ]
                 )
             )
+        initialize_weights(self.layers)
+
+    def forward(self, x: torch.Tensor):
+        return self.layers(x)
+
+
+class TransformerEncoder(HeadBase):
+    def __init__(self, in_channels: int):
+        super(TransformerEncoder, self).__init__(in_channels)
+        self.in_channels = in_channels
+
+        encoder_layer = nn.TransformerEncoderLayer(d_model=self.in_channels, nhead=2)
+        self.layers = nn.TransformerEncoder(encoder_layer, num_layers=1)
         initialize_weights(self.layers)
 
     def forward(self, x: torch.Tensor):

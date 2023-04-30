@@ -1,5 +1,6 @@
 from models.slice.backbone import ResNetBackbone, DenseNetBackbone
-from models.slice.head import GAPLinearClassifier, GAPLinearProjector, LinearEncoder, LinearDecoder, Classifier
+from models.slice.head import GAPLinearClassifier, GAPLinearProjector, LinearEncoder, LinearDecoder
+from models.slice.head import Classifier, TransformerEncoder
 
 
 def build_networks_single(config, **kwargs):
@@ -105,30 +106,54 @@ def build_networks_general_teacher(config, **kwargs):
         extractor_pet._fix_first_conv()
 
     # 2. Projector
-    projector_mri = GAPLinearProjector(name=config.extractor_type,
-                                       in_channels=extractor_mri.out_channels,
-                                       out_channels=config.hidden)
-    projector_pet = GAPLinearProjector(name=config.extractor_type,
-                                       in_channels=extractor_pet.out_channels,
-                                       out_channels=config.hidden)
+    if config.use_projector:
+        projector_mri = GAPLinearProjector(name=config.extractor_type,
+                                           in_channels=extractor_mri.out_channels,
+                                           out_channels=config.hidden)
+        projector_pet = GAPLinearProjector(name=config.extractor_type,
+                                           in_channels=extractor_pet.out_channels,
+                                           out_channels=config.hidden)
+    else:
+        projector_mri, projector_pet = None, None
 
     # 3. Encoder
-    encoder_general = LinearEncoder(in_channels=config.hidden, out_channels=config.hidden)
-    encoder_mri = LinearEncoder(in_channels=config.hidden, out_channels=config.hidden)
-    encoder_pet = LinearEncoder(in_channels=config.hidden, out_channels=config.hidden)
+    if config.use_projector:
+        encoder_general = LinearEncoder(in_channels=config.hidden, out_channels=config.hidden)
+        encoder_mri = LinearEncoder(in_channels=config.hidden, out_channels=config.hidden)
+        encoder_pet = LinearEncoder(in_channels=config.hidden, out_channels=config.hidden)
+    else:
+        assert extractor_mri.out_channels == extractor_pet.out_channels
+        encoder_general = LinearEncoder(in_channels=extractor_mri.out_channels, out_channels=config.hidden)
+        encoder_mri = LinearEncoder(in_channels=extractor_mri.out_channels, out_channels=config.hidden)
+        encoder_pet = LinearEncoder(in_channels=extractor_pet.out_channels, out_channels=config.hidden)
 
     # 4. Decoder
-    decoder_mri = LinearDecoder(in_channels=config.hidden, out_channels=config.hidden)
-    decoder_pet = LinearDecoder(in_channels=config.hidden, out_channels=config.hidden)
+    if config.use_projector:
+        decoder_mri = LinearDecoder(in_channels=config.hidden, out_channels=config.hidden)
+        decoder_pet = LinearDecoder(in_channels=config.hidden, out_channels=config.hidden)
+    else:
+        decoder_mri = LinearDecoder(in_channels=config.hidden, out_channels=extractor_mri.out_channels)
+        decoder_pet = LinearDecoder(in_channels=config.hidden, out_channels=extractor_pet.out_channels)
 
     # 5. Classifier
-    classifier = Classifier(in_channels=config.hidden * 2, n_classes=2, mlp=config.mlp, dropout=config.dropout)
+    if config.use_transformer:
+        transformer_encoder = TransformerEncoder(in_channels=config.hidden)
+    else:
+        transformer_encoder = None
+
+    if config.use_specific:
+        classifier = Classifier(in_channels=config.hidden * 4, n_classes=2, mlp=config.mlp, dropout=config.dropout)
+    else:
+        classifier = Classifier(in_channels=config.hidden * 2, n_classes=2, mlp=config.mlp, dropout=config.dropout)
+
+    if config.add_type == 'add':
+        classifier = Classifier(in_channels=config.hidden, n_classes=2, mlp=config.mlp, dropout=config.dropout)
 
     networks = dict(extractor_mri=extractor_mri, extractor_pet=extractor_pet,
                     projector_mri=projector_mri, projector_pet=projector_pet,
                     encoder_general=encoder_general, encoder_mri=encoder_mri, encoder_pet=encoder_pet,
                     decoder_mri=decoder_mri, decoder_pet=decoder_pet,
-                    classifier=classifier)
+                    transformer_encoder=transformer_encoder, classifier=classifier)
 
     return networks
 

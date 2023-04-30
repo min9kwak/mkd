@@ -138,7 +138,12 @@ def main_worker(local_rank: int, config: object):
 
     # Similarity, Difference, and Reconstruction
     loss_function_sim = CMDLoss(n_moments=config.n_moments)
-    loss_function_diff = DiffLoss()
+    if config.loss_diff == 'diff':
+        loss_function_diff = DiffLoss()
+    elif config.loss_diff == 'mse':
+        loss_function_diff = nn.MSELoss(reduction='mean')
+    else:
+        raise ValueError
     loss_function_recon = nn.MSELoss(reduction='mean')
 
     # Model (Task)

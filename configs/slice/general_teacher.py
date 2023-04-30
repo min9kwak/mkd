@@ -65,8 +65,15 @@ class SliceGeneralTeacher(ConfigBase):
         parser.add_argument('--swap', type=str2bool, default=False)
 
         # Classifier
-        parser.add_argument('--mlp', type=str2bool, default=False)
+        parser.add_argument('--mlp', type=str2bool, default=False) # classifier_type - linear, mlp, transformer
         parser.add_argument('--dropout', type=float, default=0.0)
+
+        # Optional
+        parser.add_argument('--use_projector', type=str2bool, default=True)
+        parser.add_argument('--use_specific', type=str2bool, default=False)
+        parser.add_argument('--use_transformer', type=str2bool, default=True)
+        parser.add_argument('--ce_only', type=str2bool, default=False)
+        parser.add_argument('--add_type', type=str, default='add', choices=('concat', 'add'))
 
         return parser
 
@@ -79,7 +86,7 @@ class SliceGeneralTeacher(ConfigBase):
         parser.add_argument('--num_workers', type=int, default=4, help='Number of CPU threads.')
 
         # Optimizer: MRI & PET
-        parser.add_argument('--optimizer', type=str, default='sgd', choices=('sgd', 'adamw'),
+        parser.add_argument('--optimizer', type=str, default='adamw', choices=('sgd', 'adamw'),
                             help='Optimization algorithm.')
         parser.add_argument('--learning_rate', type=float, default=0.0001, help='Base learning rate to start from.')
         parser.add_argument('--weight_decay', type=float, default=0.0001, help='Weight decay factor.')
@@ -106,6 +113,7 @@ class SliceGeneralTeacher(ConfigBase):
         parser.add_argument('--alpha_recon', type=float, default=1.0)
 
         # Loss
+        parser.add_argument('--loss_diff', type=str, default='diff', choices=('diff', 'mse'))
         parser.add_argument('--n_moments', type=int, default=5)
 
         return parser

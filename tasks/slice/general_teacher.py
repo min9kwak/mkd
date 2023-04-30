@@ -20,7 +20,7 @@ class GeneralTeacher(object):
                      'projector_mri', 'projector_pet',
                      'encoder_general', 'encoder_mri', 'encoder_pet',
                      'decoder_mri', 'decoder_pet',
-                     'classifier']
+                     'transformer_encoder', 'classifier']
 
     def __init__(self,
                  networks: dict):
@@ -30,6 +30,11 @@ class GeneralTeacher(object):
         self.optimizer = None
         self.scheduler = None
         self.prepared = False
+
+        self.networks = {k: v for k, v in self.networks.items() if v is not None}
+        self.network_names = list(self.networks.keys())
+
+        self.train_step = None
 
     def prepare(self,
                 config: object,
@@ -59,7 +64,6 @@ class GeneralTeacher(object):
         self.distributed = config.distributed
         self.local_rank = local_rank
 
-        # TODO: alphas
         self.mixed_precision = config.mixed_precision
         self.enable_wandb = config.enable_wandb
 
@@ -91,6 +95,12 @@ class GeneralTeacher(object):
         self.prepared = True
 
     def run(self, datasets, save_every: int = 20, **kwargs):
+
+        # Only Classification Loss
+        if self.config.ce_only:
+            self.train_step = self.train_step_ce_only
+        else:
+            self.train_step = self.train_step_all
 
         if not self.prepared:
             raise RuntimeError("Training not prepared.")
@@ -255,15 +265,94 @@ class GeneralTeacher(object):
 
         return result
 
-    def train_step(self, batch):
+    def train_step_ce_only(self, batch):
         # input data
         x_mri = torch.concat(batch['mri']).float().to(self.local_rank)
         x_pet = torch.concat(batch['pet']).float().to(self.local_rank)
         y = batch['y'].long().repeat(self.config.num_slices).to(self.local_rank)
 
         # hidden representations - h
-        h_mri = self.networks['projector_mri'](self.networks['extractor_mri'](x_mri))
-        h_pet = self.networks['projector_pet'](self.networks['extractor_pet'](x_pet))
+        if self.config.use_projector:
+            h_mri = self.networks['projector_mri'](self.networks['extractor_mri'](x_mri))
+            h_pet = self.networks['projector_pet'](self.networks['extractor_pet'](x_pet))
+        else:
+            h_mri = self.networks['extractor_mri'](x_mri)
+            h_mri = F.adaptive_avg_pool2d(h_mri, 1).flatten(1, -1)
+            h_pet = self.networks['extractor_pet'](x_pet)
+            h_pet = F.adaptive_avg_pool2d(h_pet, 1).flatten(1, -1)
+
+        # separated representations - z
+        z_mri_general = self.networks['encoder_general'](h_mri)
+        z_pet_general = self.networks['encoder_general'](h_pet)
+        z_mri = self.networks['encoder_mri'](h_mri)
+        z_pet = self.networks['encoder_pet'](h_pet)
+
+        # classification
+        if self.config.use_specific:
+            if self.config.use_transformer:
+                z = self.networks['transformer_encoder'](
+                    torch.stack((z_mri_general, z_pet_general, z_mri, z_pet), dim=0)
+                )
+                if self.config.add_type == 'add':
+                    z = torch.sum(z, 0)
+                else:
+                    z = z.permute(1, 0, 2).flatten(1)
+                logit = self.networks['classifier'](z)
+            else:
+                if self.config.add_type =='add':
+                    logit = self.networks['classifier'](z_mri_general + z_pet_general + z_mri + z_pet_general)
+                else:
+                    logit = self.networks['classifier'](torch.cat([z_mri_general, z_pet_general, z_mri, z_pet], dim=1))
+        else:
+            if self.config.use_transformer:
+                z = self.networks['transformer_encoder'](
+                    torch.stack((z_mri_general, z_pet_general), dim=0)
+                )
+                if self.config.add_type == 'add':
+                    z = torch.sum(z, 0)
+                else:
+                    z = z.permute(1, 0, 2).flatten(1)
+                logit = self.networks['classifier'](z)
+            else:
+                if self.config.add_type == 'add':
+                    logit = self.networks['classifier'](z_mri_general + z_pet_general)
+                else:
+                    logit = self.networks['classifier'](torch.cat([z_mri_general, z_pet_general], dim=1))
+        loss_ce = self.loss_function_ce(logit, y)
+
+        loss_sim = torch.tensor(0, dtype=torch.float16, device=loss_ce.device)
+        loss_diff_specific = torch.tensor(0, dtype=torch.float16, device=loss_ce.device)
+        loss_diff_mri = torch.tensor(0, dtype=torch.float16, device=loss_ce.device)
+        loss_diff_pet = torch.tensor(0, dtype=torch.float16, device=loss_ce.device)
+        loss_recon_mri = torch.tensor(0, dtype=torch.float16, device=loss_ce.device)
+        loss_recon_pet = torch.tensor(0, dtype=torch.float16, device=loss_ce.device)
+        loss_diff = torch.tensor(0, dtype=torch.float16, device=loss_ce.device)
+        loss_recon = torch.tensor(0, dtype=torch.float16, device=loss_ce.device)
+
+        loss = loss_ce + \
+               self.config.alpha_sim * loss_sim + \
+               self.config.alpha_diff * loss_diff + \
+               self.config.alpha_recon * loss_recon
+
+        return loss, loss_ce, loss_sim, loss_diff_specific, loss_diff_mri, loss_diff_pet, \
+               loss_recon_mri, loss_recon_pet, y, logit
+
+    def train_step_all(self, batch):
+
+        # input data
+        x_mri = torch.concat(batch['mri']).float().to(self.local_rank)
+        x_pet = torch.concat(batch['pet']).float().to(self.local_rank)
+        y = batch['y'].long().repeat(self.config.num_slices).to(self.local_rank)
+
+        # hidden representations - h
+        if self.config.use_projector:
+            h_mri = self.networks['projector_mri'](self.networks['extractor_mri'](x_mri))
+            h_pet = self.networks['projector_pet'](self.networks['extractor_pet'](x_pet))
+        else:
+            h_mri = self.networks['extractor_mri'](x_mri)
+            h_mri = F.adaptive_avg_pool2d(h_mri, 1).flatten(1, -1)
+            h_pet = self.networks['extractor_pet'](x_pet)
+            h_pet = F.adaptive_avg_pool2d(h_pet, 1).flatten(1, -1)
 
         # separated representations - z
         z_mri_general = self.networks['encoder_general'](h_mri)
@@ -293,7 +382,36 @@ class GeneralTeacher(object):
         loss_recon = loss_recon_mri + loss_recon_pet
 
         # classification
-        logit = self.networks['classifier'](torch.cat([z_mri_general, z_pet_general], dim=1))
+        if self.config.use_specific:
+            if self.config.use_transformer:
+                z = self.networks['transformer_encoder'](
+                    torch.stack((z_mri_general, z_pet_general, z_mri, z_pet), dim=0)
+                )
+                if self.config.add_type == 'add':
+                    z = torch.sum(z, 0)
+                else:
+                    z = z.permute(1, 0, 2).flatten(1)
+                logit = self.networks['classifier'](z)
+            else:
+                if self.config.add_type =='add':
+                    logit = self.networks['classifier'](z_mri_general + z_pet_general + z_mri + z_pet_general)
+                else:
+                    logit = self.networks['classifier'](torch.cat([z_mri_general, z_pet_general, z_mri, z_pet], dim=1))
+        else:
+            if self.config.use_transformer:
+                z = self.networks['transformer_encoder'](
+                    torch.stack((z_mri_general, z_pet_general), dim=0)
+                )
+                if self.config.add_type == 'add':
+                    z = torch.sum(z, 0)
+                else:
+                    z = z.permute(1, 0, 2).flatten(1)
+                logit = self.networks['classifier'](z)
+            else:
+                if self.config.add_type == 'add':
+                    logit = self.networks['classifier'](z_mri_general + z_pet_general)
+                else:
+                    logit = self.networks['classifier'](torch.cat([z_mri_general, z_pet_general], dim=1))
         loss_ce = self.loss_function_ce(logit, y)
 
         loss = loss_ce + \
