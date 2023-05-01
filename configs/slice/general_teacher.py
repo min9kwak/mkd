@@ -74,6 +74,7 @@ class SliceGeneralTeacher(ConfigBase):
         parser.add_argument('--use_transformer', type=str2bool, default=True)
         parser.add_argument('--ce_only', type=str2bool, default=False)
         parser.add_argument('--add_type', type=str, default='add', choices=('concat', 'add'))
+        parser.add_argument('--warmup', type=int, default=-1)
 
         return parser
 
