@@ -84,9 +84,17 @@ class GeneralTeacher(object):
         # Optimization setting
         params = []
         for name in self.networks.keys():
-            params = params + list(self.networks[name].parameters())
-        self.optimizer = get_optimizer(params=params, name=config.optimizer,
-                                       lr=config.learning_rate, weight_decay=config.weight_decay)
+            if name.startswith('encoder_') or name.startswith('decoder_'):
+                params = params + [{'params': self.networks[name].parameters(),
+                                    'lr': self.config.learning_rate / 10}]
+            else:
+                params = params + [{'params': self.networks[name].parameters(),
+                                    'lr': self.config.learning_rate}]
+
+        self.optimizer = get_optimizer(params=params,
+                                       name=config.optimizer,
+                                       lr=config.learning_rate,
+                                       weight_decay=config.weight_decay)
         self.scheduler = get_cosine_scheduler(self.optimizer, epochs=self.epochs, warmup_steps=config.cosine_warmup,
                                               cycles=config.cosine_cycles, min_lr=config.cosine_min_lr)
         self.scaler = torch.cuda.amp.GradScaler() if config.mixed_precision else None
@@ -95,12 +103,6 @@ class GeneralTeacher(object):
         self.prepared = True
 
     def run(self, datasets, save_every: int = 20, **kwargs):
-
-        # Only Classification Loss
-        if self.config.ce_only:
-            self.train_step = self.train_step_ce_only
-        else:
-            self.train_step = self.train_step_all
 
         if not self.prepared:
             raise RuntimeError("Training not prepared.")
@@ -124,6 +126,15 @@ class GeneralTeacher(object):
         for epoch in range(1, self.epochs + 1):
 
             self.epoch = epoch
+
+            # Only Classification Loss
+            if epoch <= self.config.warmup:
+                self.train_step = self.train_step_ce_only
+            else:
+                if self.config.ce_only:
+                    self.train_step = self.train_step_ce_only
+                else:
+                    self.train_step = self.train_step_all
 
             # Train and Test
             epoch_history = collections.defaultdict(dict)
@@ -509,9 +520,18 @@ class GeneralTeacher(object):
     def update(self, loss):
         if self.scaler is not None:
             self.scaler.scale(loss).backward()
+            # self.scaler.unscale_(self.optimizer)
+            # params = []
+            # for name in self.networks.keys():
+            #     params = params + [a for a in self.networks[name].parameters() if a.requires_grad]
+            # torch.nn.utils.clip_grad_value_(params, clip_value=1.0)
             self.scaler.step(self.optimizer)
             self.scaler.update()
         else:
             loss.backward()
+            # params = []
+            # for name in self.networks.keys():
+            #     params = params + [a for a in self.networks[name].parameters() if a.requires_grad]
+            # torch.nn.utils.clip_grad_value_(params, clip_value=1.0)
             self.optimizer.step()
         self.optimizer.zero_grad()
