@@ -120,13 +120,10 @@ class Swap(object):
             self.epoch = epoch
 
             # Only Classification Loss
-            if epoch <= self.config.warmup:
+            if self.config.ce_only:
                 self.train_step = self.train_step_ce_only
             else:
-                if self.config.ce_only:
-                    self.train_step = self.train_step_ce_only
-                else:
-                    self.train_step = self.train_step_all
+                self.train_step = self.train_step_all
 
             # Train and Test
             epoch_history = collections.defaultdict(dict)
