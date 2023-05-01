@@ -315,7 +315,10 @@ class Swap(object):
         z_pet = self.networks['encoder_pet'](h_pet)
 
         # similarity
-        loss_sim = self.loss_function_sim(z_mri_general, z_pet_general)
+        if self.config.use_sim:
+            loss_sim = self.loss_function_sim(z_mri_general, z_pet_general)
+        else:
+            loss_sim = torch.tensor(0, dtype=torch.float16, device=y.device)
 
         # reconstruction - h
         if self.swap:

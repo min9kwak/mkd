@@ -26,6 +26,7 @@ ALPHA_RECON=0.1
 
 RANDOM_STATE=2021
 
+USE_SIM=False
 
 for RANDOM_STATE in 2021
 do
@@ -59,6 +60,7 @@ do
           --learning_rate $LEARNING_RATE \
           --weight_decay 0.0001 \
           --use_specific $USE_SPECIFIC \
+          --use_sim $USE_SIM \
           --add_type $ADD_TYPE \
           --ce_only $CE_ONLY \
           --cosine_warmup $COSINE_WARMUP \

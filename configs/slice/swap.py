@@ -70,6 +70,7 @@ class SliceSwap(ConfigBase):
 
         # Optional
         parser.add_argument('--use_specific', type=str2bool, default=False)
+        parser.add_argument('--use_sim', type=str2bool, default=False)
         parser.add_argument('--ce_only', type=str2bool, default=False)
         parser.add_argument('--add_type', type=str, default='add', choices=('concat', 'add'))
 
