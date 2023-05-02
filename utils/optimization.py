@@ -3,7 +3,7 @@
 import math
 import torch
 import torch.optim as optim
-from torch.optim import Optimizer, SGD, AdamW
+from torch.optim import Optimizer, SGD, AdamW, Adam
 from torch.optim.lr_scheduler import StepLR, MultiStepLR, LambdaLR
 
 
@@ -77,6 +77,8 @@ def get_optimizer(params, name: str, lr: float, weight_decay: float, **kwargs):
 
     if name == 'adamw':
         return AdamW(params=params, lr=lr, weight_decay=weight_decay)
+    elif name == 'adam':
+        return Adam(params=params, lr=lr, weight_decay=weight_decay)
     elif name == 'sgd':
         return SGD(params=params, lr=lr, momentum=0.9, weight_decay=weight_decay)
     else:
