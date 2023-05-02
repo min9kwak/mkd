@@ -21,22 +21,22 @@ COSINE_WARMUP=0
 
 CE_ONLY=False
 
-ALPHA_SIM=0.1
-ALPHA_RECON=0.1
+ALPHA_SIM=1.0
+ALPHA_RECON=1.0
 
 RANDOM_STATE=2021
 
-USE_SIM=False
+USE_SIM=True
 
 for RANDOM_STATE in 2021
 do
-  for CE_ONLY in True False
+  for CE_ONLY in False
   do
-    for SWAP in True False
+    for SWAP in False True
     do
-      for USE_SPECIFIC in True False
+      for USE_SPECIFIC in False
       do
-        for ADD_TYPE in add concat
+        for ADD_TYPE in add
         do
           python ./run_swap.py \
           --gpus $GPUS \

@@ -294,6 +294,7 @@ class Swap(object):
         loss_recon = loss_recon_mri + loss_recon_pet
 
         loss = loss_ce + self.config.alpha_sim * loss_sim + self.config.alpha_recon * loss_recon
+        # loss = loss / (1 + self.config.alpha_sim + self.config.alpha_recon)
 
         return loss, loss_ce, loss_sim, loss_recon, loss_recon_mri, loss_recon_pet, y, logit
 
@@ -346,6 +347,7 @@ class Swap(object):
         loss_ce = self.loss_function_ce(logit, y)
 
         loss = loss_ce + self.config.alpha_sim * loss_sim + self.config.alpha_recon * loss_recon
+        # loss = loss / (1 + self.config.alpha_sim + self.config.alpha_recon)
 
         return loss, loss_ce, loss_sim, loss_recon, loss_recon_mri, loss_recon_pet, y, logit
 
@@ -429,18 +431,20 @@ class Swap(object):
     def update(self, loss):
         if self.scaler is not None:
             self.scaler.scale(loss).backward()
-            # self.scaler.unscale_(self.optimizer)
-            # params = []
-            # for name in self.networks.keys():
-            #     params = params + [a for a in self.networks[name].parameters() if a.requires_grad]
-            # torch.nn.utils.clip_grad_value_(params, clip_value=1.0)
+            # if self.epoch > 1:
+            #     self.scaler.unscale_(self.optimizer)
+            #     params = []
+            #     for name in self.networks.keys():
+            #         params = params + [a for a in self.networks[name].parameters() if a.requires_grad]
+            #     torch.nn.utils.clip_grad_norm_(params, 1.0)
             self.scaler.step(self.optimizer)
             self.scaler.update()
         else:
             loss.backward()
-            # params = []
-            # for name in self.networks.keys():
-            #     params = params + [a for a in self.networks[name].parameters() if a.requires_grad]
-            # torch.nn.utils.clip_grad_value_(params, clip_value=1.0)
+            # if self.epoch > 1:
+            #     params = []
+            #     for name in self.networks.keys():
+            #         params = params + [a for a in self.networks[name].parameters() if a.requires_grad]
+            #     torch.nn.utils.clip_grad_norm_(params, 1.0)
             self.optimizer.step()
         self.optimizer.zero_grad()

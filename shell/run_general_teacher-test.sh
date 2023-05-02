@@ -4,15 +4,15 @@ GPUS=0
 
 PET_TYPE=FBP
 CROP_SIZE=64
-TRAIN_SLICES=fixed
+TRAIN_SLICES=sagittal
 MISSING_RATE=-1
 
 ENCODER_TYPE=resnet50
 SMALL_KERNEL=True
 
-HIDDEN=128
+HIDDEN=64
 SWAP=False
-MLP=True
+MLP=False
 DROPOUT=0.0
 
 EPOCHS=100
@@ -21,6 +21,7 @@ COSINE_WARMUP=0
 
 CE_ONLY=False
 WARMUP=-1
+LOSS_DIFF="mse"
 
 ALPHA_SIM=0.1
 ALPHA_DIFF=0.1
@@ -33,11 +34,11 @@ for RANDOM_STATE in 2021
 do
   for USE_PROJECTOR in True
   do
-    for USE_SPECIFIC in False
+    for USE_SPECIFIC in True
     do
       for USE_TRANSFORMER in False
       do
-        for ADD_TYPE in add concat
+        for ADD_TYPE in add
         do
           python ./run_general_teacher.py \
           --gpus $GPUS \
@@ -53,6 +54,7 @@ do
           --random_state $RANDOM_STATE \
           --hidden $HIDDEN \
           --swap $SWAP \
+          --loss_diff $LOSS_DIFF \
           --mlp $MLP \
           --dropout $DROPOUT \
           --epochs $EPOCHS \
