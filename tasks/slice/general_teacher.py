@@ -86,7 +86,7 @@ class GeneralTeacher(object):
         for name in self.networks.keys():
             if name.startswith('encoder_') or name.startswith('decoder_'):
                 params = params + [{'params': self.networks[name].parameters(),
-                                    'lr': self.config.learning_rate / 10}]
+                                    'lr': self.config.learning_rate}] # / 10
             else:
                 params = params + [{'params': self.networks[name].parameters(),
                                     'lr': self.config.learning_rate}]
@@ -118,6 +118,9 @@ class GeneralTeacher(object):
 
         # Logging
         logger = kwargs.get('logger', None)
+
+        if self.enable_wandb:
+            wandb.watch([v for k, v in self.networks.items()], log='all', log_freq=len(loaders['train']))
 
         # Find the best model by total loss
         best_eval_loss = float('inf')
