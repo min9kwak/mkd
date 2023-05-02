@@ -130,7 +130,7 @@ class GAPLinearProjector(GAPHeadBase):
                         ('gap', nn.AdaptiveAvgPool2d(1)),
                         ('flatten', nn.Flatten(1)),
                         ('linear', nn.Linear(in_channels, out_channels)),
-                        ('relu', nn.ReLU(inplace=False)),
+                        ('relu', nn.LeakyReLU(inplace=False)),
                         ('norm', nn.LayerNorm(out_channels))
                     ]
                 )
@@ -143,7 +143,7 @@ class GAPLinearProjector(GAPHeadBase):
                         ('gap', nn.AdaptiveAvgPool2d(1)),
                         ('flatten', nn.Flatten(1)),
                         ('linear', nn.Linear(in_channels, out_channels)),
-                        ('relu2', nn.ReLU(inplace=False)),
+                        ('relu2', nn.LeakyReLU(inplace=False)),
                         ('norm', nn.LayerNorm(out_channels))
                     ]
                 )
@@ -167,7 +167,8 @@ class LinearEncoder(LinearHeadBase):
             collections.OrderedDict(
                 [
                     ('linear', nn.Linear(self.in_channels, self.out_channels)),
-                    ('sigmoid', nn.Sigmoid())
+                    ('relu', nn.ReLU(inplace=False)),
+                    # ('sigmoid', nn.Sigmoid())
                 ]
             )
         )
