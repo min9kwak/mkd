@@ -118,9 +118,9 @@ def build_networks_general_teacher(config, **kwargs):
 
     # 3. Encoder
     if config.use_projector:
-        encoder_general = LinearEncoder(in_channels=config.hidden, out_channels=config.hidden)
-        encoder_mri = LinearEncoder(in_channels=config.hidden, out_channels=config.hidden)
-        encoder_pet = LinearEncoder(in_channels=config.hidden, out_channels=config.hidden)
+        encoder_general = LinearEncoder(in_channels=config.hidden, out_channels=config.hidden // 2)
+        encoder_mri = LinearEncoder(in_channels=config.hidden, out_channels=config.hidden // 2)
+        encoder_pet = LinearEncoder(in_channels=config.hidden, out_channels=config.hidden // 2)
     else:
         assert extractor_mri.out_channels == extractor_pet.out_channels
         encoder_general = LinearEncoder(in_channels=extractor_mri.out_channels, out_channels=config.hidden)
@@ -129,25 +129,25 @@ def build_networks_general_teacher(config, **kwargs):
 
     # 4. Decoder
     if config.use_projector:
-        decoder_mri = LinearDecoder(in_channels=config.hidden, out_channels=config.hidden)
-        decoder_pet = LinearDecoder(in_channels=config.hidden, out_channels=config.hidden)
+        decoder_mri = LinearDecoder(in_channels=config.hidden // 2, out_channels=config.hidden)
+        decoder_pet = LinearDecoder(in_channels=config.hidden // 2, out_channels=config.hidden)
     else:
         decoder_mri = LinearDecoder(in_channels=config.hidden, out_channels=extractor_mri.out_channels)
         decoder_pet = LinearDecoder(in_channels=config.hidden, out_channels=extractor_pet.out_channels)
 
     # 5. Classifier
     if config.use_transformer:
-        transformer_encoder = TransformerEncoder(in_channels=config.hidden)
+        transformer_encoder = TransformerEncoder(in_channels=config.hidden // 2)
     else:
         transformer_encoder = None
 
     if config.use_specific:
-        classifier = Classifier(in_channels=config.hidden * 4, n_classes=2, mlp=config.mlp, dropout=config.dropout)
+        classifier = Classifier(in_channels=config.hidden * 4 // 2, n_classes=2, mlp=config.mlp, dropout=config.dropout)
     else:
-        classifier = Classifier(in_channels=config.hidden * 2, n_classes=2, mlp=config.mlp, dropout=config.dropout)
+        classifier = Classifier(in_channels=config.hidden * 2 // 2, n_classes=2, mlp=config.mlp, dropout=config.dropout)
 
     if config.add_type == 'add':
-        classifier = Classifier(in_channels=config.hidden, n_classes=2, mlp=config.mlp, dropout=config.dropout)
+        classifier = Classifier(in_channels=config.hidden // 2, n_classes=2, mlp=config.mlp, dropout=config.dropout)
 
     networks = dict(extractor_mri=extractor_mri, extractor_pet=extractor_pet,
                     projector_mri=projector_mri, projector_pet=projector_pet,
