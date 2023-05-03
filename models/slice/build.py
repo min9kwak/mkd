@@ -141,13 +141,17 @@ def build_networks_general_teacher(config, **kwargs):
     else:
         transformer_encoder = None
 
-    if config.use_specific:
-        classifier = Classifier(in_channels=config.hidden * 4 // 2, n_classes=2, mlp=config.mlp, dropout=config.dropout)
-    else:
-        classifier = Classifier(in_channels=config.hidden * 2 // 2, n_classes=2, mlp=config.mlp, dropout=config.dropout)
+    if config.add_type == 'concat':
+        if config.use_specific:
+            classifier = Classifier(in_channels=config.hidden * 4 // 2, n_classes=2, mlp=config.mlp, dropout=config.dropout)
+        else:
+            classifier = Classifier(in_channels=config.hidden * 2 // 2, n_classes=2, mlp=config.mlp, dropout=config.dropout)
 
     if config.add_type == 'add':
-        classifier = Classifier(in_channels=config.hidden // 2, n_classes=2, mlp=config.mlp, dropout=config.dropout)
+        if config.use_projector:
+            classifier = Classifier(in_channels=config.hidden // 2, n_classes=2, mlp=config.mlp, dropout=config.dropout)
+        else:
+            classifier = Classifier(in_channels=config.hidden, n_classes=2, mlp=config.mlp, dropout=config.dropout)
 
     networks = dict(extractor_mri=extractor_mri, extractor_pet=extractor_pet,
                     projector_mri=projector_mri, projector_pet=projector_pet,

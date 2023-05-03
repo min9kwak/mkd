@@ -10,7 +10,7 @@ MISSING_RATE=-1
 ENCODER_TYPE=resnet50
 SMALL_KERNEL=True
 
-HIDDEN=64
+HIDDEN=128
 SWAP=False
 MLP=False
 DROPOUT=0.0
@@ -29,14 +29,19 @@ ALPHA_RECON=0.1
 
 RANDOM_STATE=2021
 
+USE_PROJECTOR=False
+USE_SPECIFIC=True
+USE_TRANSFORMER=False
+
+AGG=sum
 
 for RANDOM_STATE in 2021
 do
-  for USE_PROJECTOR in True
+  for ALPHA_SIM in 0.1
   do
-    for USE_SPECIFIC in True
+    for ALPHA_DIFF in 0.1
     do
-      for USE_TRANSFORMER in False
+      for ALPHA_RECON in 0.1
       do
         for ADD_TYPE in add
         do
@@ -71,7 +76,8 @@ do
           --cosine_warmup $COSINE_WARMUP \
           --alpha_sim $ALPHA_SIM \
           --alpha_diff $ALPHA_DIFF \
-          --alpha_recon $ALPHA_RECON
+          --alpha_recon $ALPHA_RECON \
+          --agg $AGG
         done
       done
     done

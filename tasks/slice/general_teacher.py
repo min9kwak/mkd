@@ -347,6 +347,8 @@ class GeneralTeacher(object):
                self.config.alpha_sim * loss_sim + \
                self.config.alpha_diff * loss_diff + \
                self.config.alpha_recon * loss_recon
+        if self.config.agg == 'mean':
+            loss = loss / (1 + self.config.alpha_sim + self.config.alpha_diff + self.config.alpha_recon)
 
         return loss, loss_ce, loss_sim, loss_diff_specific, loss_diff_mri, loss_diff_pet, \
                loss_recon_mri, loss_recon_pet, y, logit
@@ -432,6 +434,8 @@ class GeneralTeacher(object):
                self.config.alpha_sim * loss_sim + \
                self.config.alpha_diff * loss_diff + \
                self.config.alpha_recon * loss_recon
+        if self.config.agg == 'mean':
+            loss = loss / (1 + self.config.alpha_sim + self.config.alpha_diff + self.config.alpha_recon)
 
         return loss, loss_ce, loss_sim, loss_diff_specific, loss_diff_mri, loss_diff_pet, \
                loss_recon_mri, loss_recon_pet, y, logit
