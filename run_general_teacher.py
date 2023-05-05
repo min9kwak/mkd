@@ -94,6 +94,7 @@ def main_worker(local_rank: int, config: object):
                                mri_type=config.mri_type,
                                pet_type=config.pet_type,
                                mci_only=config.mci_only,
+                               use_unlabeled=config.use_unlabeled,
                                random_state=config.random_state)
     datasets_dict = processor.process(validation_size=config.validation_size,
                                       test_size=config.test_size,
@@ -134,7 +135,7 @@ def main_worker(local_rank: int, config: object):
     class_weight = None
     if config.balance:
         class_weight = torch.tensor(processor.class_weight_pet, dtype=torch.float).to(local_rank)
-    loss_function_ce = nn.CrossEntropyLoss(weight=class_weight, reduction='mean')
+    loss_function_ce = nn.CrossEntropyLoss(weight=class_weight, reduction='mean', ignore_index=-1)
 
     # Similarity, Difference, and Reconstruction
     loss_function_sim = CMDLoss(n_moments=config.n_moments)

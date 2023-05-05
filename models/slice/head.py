@@ -158,17 +158,27 @@ class GAPLinearProjector(GAPHeadBase):
 
 
 class LinearEncoder(LinearHeadBase):
-    def __init__(self, in_channels: int, out_channels: int):
+    def __init__(self, in_channels: int, out_channels: int, act):
         super(LinearEncoder, self).__init__(in_channels, out_channels)
 
         self.in_channels = in_channels
         self.out_channels = out_channels
+
+        self.act = act
+        if self.act == 'relu':
+            act_layer = ('relu', nn.ReLU(inplace=False))
+        elif self.act == 'lrelu':
+            act_layer = ('lrelu', nn.LeakyReLU(negative_slope=0.1, inplace=False))
+        elif self.act == 'sigmoid':
+            act_layer = ('sigmoid', nn.Sigmoid())
+        else:
+            raise ValueError
+
         self.layers = nn.Sequential(
             collections.OrderedDict(
                 [
                     ('linear', nn.Linear(self.in_channels, self.out_channels)),
-                    ('relu', nn.LeakyReLU(negative_slope=0.1, inplace=False)),
-                    # ('sigmoid', nn.Sigmoid())
+                    act_layer
                 ]
             )
         )

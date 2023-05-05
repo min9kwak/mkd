@@ -15,6 +15,7 @@ class SliceGeneralTeacher(ConfigBase):
         parser.add_argument('--data_file', type=str, default='labels/data_info_multi.csv')
         parser.add_argument('--pet_type', type=str, choices=('FDG', 'FBP'), default='FBP')
         parser.add_argument('--mci_only', type=str2bool, default=False)
+        parser.add_argument('--use_unlabeled', type=str2bool, default=False)
 
         parser.add_argument('--random_state', type=int, default=2023)
         parser.add_argument('--validation_size', type=float, default=0.1)
@@ -63,6 +64,7 @@ class SliceGeneralTeacher(ConfigBase):
         # Projector, Encoder, and Decoder
         parser.add_argument('--hidden', type=int, default=128)
         parser.add_argument('--swap', type=str2bool, default=False)
+        parser.add_argument('--encoder_act', type=str, default='leaky', choices=('relu', 'lrelu', 'sigmoid'))
 
         # Classifier
         parser.add_argument('--mlp', type=str2bool, default=False) # classifier_type - linear, mlp, transformer

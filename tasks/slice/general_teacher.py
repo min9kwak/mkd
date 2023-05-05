@@ -169,6 +169,7 @@ class GeneralTeacher(object):
                 wandb.log(epoch_history)
 
             # Save best model checkpoint
+            # TODO: add patience to save the best model
             eval_loss = validation_history['total_loss']
             if eval_loss <= best_eval_loss:
                 best_eval_loss = eval_loss
@@ -260,8 +261,13 @@ class GeneralTeacher(object):
                     pg.update(task, advance=1., description=desc)
                     pg.refresh()
 
-                y_true.append(y.chunk(self.config.num_slices)[0].long())
+                # Save only labeled samples
+                labeled_index = (y != -1)
+                y = y[labeled_index].chunk(self.config.num_slices)[0].long()
+                y_true.append(y)
+
                 num_classes = logit.shape[-1]
+                logit = logit[labeled_index]
                 logit = logit.reshape(self.config.num_slices, -1, num_classes).mean(0)
                 y_pred.append(logit)
 

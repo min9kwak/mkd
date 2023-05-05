@@ -18,6 +18,7 @@ class BrainProcessor(object):
                  mri_type: str = 'template',
                  pet_type: str = 'FBP',
                  mci_only: bool = False,
+                 use_unlabeled: bool = False,
                  random_state: int = 2023,
                  **kwargs):
 
@@ -28,6 +29,7 @@ class BrainProcessor(object):
         self.mri_type = mri_type
         self.pet_type = pet_type
         self.mci_only = mci_only
+        self.use_unlabeled = use_unlabeled
         self.random_state = random_state
 
         self.demo_columns = ['PTGENDER (1=male, 2=female)', 'Age', 'PTEDUCAT',
@@ -45,12 +47,18 @@ class BrainProcessor(object):
         data = data.loc[~data.MRI.isin(mri_abnormal)]
         data['PET'] = data[self.pet_type]
 
+        u_data = data.loc[data['Conv'].isin([-1])].reset_index(drop=True)
+        u_data['PET_available'] = ~u_data['PET'].isna()
+
         data = data.loc[data['Conv'].isin([0, 1])].reset_index(drop=True)
         data['PET_available'] = ~data['PET'].isna()
 
         # 0. preprocess data
         data = self.preprocess_mc_hippo(data)
         data = self.preprocess_demo(data)
+
+        u_data = self.preprocess_mc_hippo(u_data)
+        u_data = self.preprocess_demo(u_data)
 
         if self.mci_only:
             data = data.loc[data.MCI == 1]
@@ -117,20 +125,33 @@ class BrainProcessor(object):
         # 3-4. Complete + Incomplete MRI-only training
         total_mri_train = data_train.copy()
 
-        # 4. Parse
+        # 5. Class Weight for Balancing
+        self.class_weight_mri = class_weight.compute_class_weight(class_weight='balanced',
+                                                                  classes=np.unique(total_mri_train['Conv']),
+                                                                  y=total_mri_train['Conv'])
+        self.class_weight_pet = class_weight.compute_class_weight(class_weight='balanced',
+                                                                  classes=np.unique(complete_train['Conv']),
+                                                                  y=complete_train['Conv'])
+        # 4. Unlabeled
+        if self.use_unlabeled:
+
+            u_data = u_data[~u_data['RID'].isin(rid_validation)].reset_index(drop=True)
+            u_data = u_data[~u_data['RID'].isin(rid_validation)].reset_index(drop=True)
+
+            # 4-1. Unlabeled Complete / Incomplete
+            u_complete_train = u_data.loc[u_data['PET_available'], :]
+            u_incomplete_train = u_data.loc[~u_data['PET_available'], :]
+
+            # 4-2. Concatenate
+            complete_train = pd.concat([complete_train, u_complete_train]).reset_index(drop=True)
+            incomplete_train = pd.concat([incomplete_train, u_incomplete_train]).reset_index(drop=True)
+
+        # 5. Parse
         mri_pet_complete_train = self.parse_data(complete_train)
         mri_incomplete_train = self.parse_data(incomplete_train)
         mri_total_train = self.parse_data(total_mri_train)
         mri_pet_complete_validation = self.parse_data(complete_validation)
         mri_pet_complete_test = self.parse_data(complete_test)
-
-        # 5. Class Weight for Balancing
-        self.class_weight_mri = class_weight.compute_class_weight(class_weight='balanced',
-                                                                  classes=np.unique(mri_total_train['y']),
-                                                                  y=mri_total_train['y'])
-        self.class_weight_pet = class_weight.compute_class_weight(class_weight='balanced',
-                                                                  classes=np.unique(mri_pet_complete_train['y']),
-                                                                  y=mri_pet_complete_train['y'])
 
         # 6. Return
         datasets = {'mri_pet_complete_train': mri_pet_complete_train,
@@ -300,6 +321,7 @@ if __name__ == '__main__':
     processor = BrainProcessor(root='D:/data/ADNI',
                                data_file='labels/data_info_multi.csv',
                                pet_type='FBP',
+                               mci_only=True,
                                random_state=2023)
     datasets = processor.process(validation_size=0.1, test_size=0.1, missing_rate=0.40)
 
@@ -307,14 +329,17 @@ if __name__ == '__main__':
         print(k, f": {len(v['y'])} observations")
 
     mri_pet_complete_train = datasets['mri_pet_complete_train']
+    mri_pet_complete_u_train = datasets['mri_pet_complete_u_train']
 
-    train_transform, test_transform = make_pet_transforms(image_size=72, affine=True)
+    np.concatenate([mri_pet_complete_train['y'], mri_pet_complete_u_train['y']])
 
-    pet_set = BrainPET(mri_pet_complete_train, train_transform)
-    pet_loader = DataLoader(pet_set, batch_size=5)
-    M = -100
-    for i, batch in enumerate(pet_loader):
-        for x in batch['pet']:
-            plt.imshow(x[0][0], cmap='binary')
-            plt.show()
+    multi_set = BrainMulti(mri_pet_complete_u_train, None, None)
+    multi_loader = DataLoader(multi_set, batch_size=5)
+    for k, v in mri_pet_complete_u_train.items():
+        print(k, type(v))
+    for batch in multi_loader:
+        print(batch.keys())
+        print(batch['mri'].shape)
+        print(batch['pet'].shape)
+        print(batch['y'])
         break

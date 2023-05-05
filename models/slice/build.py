@@ -118,14 +118,20 @@ def build_networks_general_teacher(config, **kwargs):
 
     # 3. Encoder
     if config.use_projector:
-        encoder_general = LinearEncoder(in_channels=config.hidden, out_channels=config.hidden // 2)
-        encoder_mri = LinearEncoder(in_channels=config.hidden, out_channels=config.hidden // 2)
-        encoder_pet = LinearEncoder(in_channels=config.hidden, out_channels=config.hidden // 2)
+        encoder_general = LinearEncoder(in_channels=config.hidden, out_channels=config.hidden // 2,
+                                        act=config.encoder_act)
+        encoder_mri = LinearEncoder(in_channels=config.hidden, out_channels=config.hidden // 2,
+                                    act=config.encoder_act)
+        encoder_pet = LinearEncoder(in_channels=config.hidden, out_channels=config.hidden // 2,
+                                    act=config.encoder_act)
     else:
         assert extractor_mri.out_channels == extractor_pet.out_channels
-        encoder_general = LinearEncoder(in_channels=extractor_mri.out_channels, out_channels=config.hidden)
-        encoder_mri = LinearEncoder(in_channels=extractor_mri.out_channels, out_channels=config.hidden)
-        encoder_pet = LinearEncoder(in_channels=extractor_pet.out_channels, out_channels=config.hidden)
+        encoder_general = LinearEncoder(in_channels=extractor_mri.out_channels, out_channels=config.hidden,
+                                        act=config.encoder_act)
+        encoder_mri = LinearEncoder(in_channels=extractor_mri.out_channels, out_channels=config.hidden,
+                                    act=config.encoder_act)
+        encoder_pet = LinearEncoder(in_channels=extractor_pet.out_channels, out_channels=config.hidden,
+                                    act=config.encoder_act)
 
     # 4. Decoder
     if config.use_projector:
@@ -185,9 +191,11 @@ def build_networks_student(config, **kwargs):
 
     # 3. Encoder
     if config.use_projector:
-        encoder_mri_s = LinearEncoder(in_channels=config.hidden, out_channels=config.hidden)
+        encoder_mri_s = LinearEncoder(in_channels=config.hidden, out_channels=config.hidden,
+                                      act=config.encoder_act)
     else:
-        encoder_mri_s = LinearEncoder(in_channels=extractor_mri_s.out_channels, out_channels=config.hidden)
+        encoder_mri_s = LinearEncoder(in_channels=extractor_mri_s.out_channels, out_channels=config.hidden,
+                                      act=config.encoder_act)
 
     # 5. Classifier
     if config.use_transformer:
@@ -235,10 +243,14 @@ def build_networks_swap(config, **kwargs):
                                        out_channels=config.hidden)
 
     # 3. Encoder
-    encoder_general_mri = LinearEncoder(in_channels=config.hidden, out_channels=config.hidden // 2)
-    encoder_general_pet = LinearEncoder(in_channels=config.hidden, out_channels=config.hidden // 2)
-    encoder_mri = LinearEncoder(in_channels=config.hidden, out_channels=config.hidden // 2)
-    encoder_pet = LinearEncoder(in_channels=config.hidden, out_channels=config.hidden // 2)
+    encoder_general_mri = LinearEncoder(in_channels=config.hidden, out_channels=config.hidden // 2,
+                                        act=config.encoder_act)
+    encoder_general_pet = LinearEncoder(in_channels=config.hidden, out_channels=config.hidden // 2,
+                                        act=config.encoder_act)
+    encoder_mri = LinearEncoder(in_channels=config.hidden, out_channels=config.hidden // 2,
+                                act=config.encoder_act)
+    encoder_pet = LinearEncoder(in_channels=config.hidden, out_channels=config.hidden // 2,
+                                act=config.encoder_act)
 
     # 4. Decoder
     decoder_mri = LinearDecoder(in_channels=config.hidden // 2, out_channels=config.hidden)
