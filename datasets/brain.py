@@ -322,24 +322,27 @@ if __name__ == '__main__':
                                data_file='labels/data_info_multi.csv',
                                pet_type='FBP',
                                mci_only=True,
+                               use_unlabeled=True,
                                random_state=2023)
     datasets = processor.process(validation_size=0.1, test_size=0.1, missing_rate=0.40)
 
     for k, v in datasets.items():
         print(k, f": {len(v['y'])} observations")
 
-    mri_pet_complete_train = datasets['mri_pet_complete_train']
-    mri_pet_complete_u_train = datasets['mri_pet_complete_u_train']
+    train_set = BrainMulti(datasets['mri_pet_complete_train'], None, None)
 
-    np.concatenate([mri_pet_complete_train['y'], mri_pet_complete_u_train['y']])
-
-    multi_set = BrainMulti(mri_pet_complete_u_train, None, None)
-    multi_loader = DataLoader(multi_set, batch_size=5)
-    for k, v in mri_pet_complete_u_train.items():
-        print(k, type(v))
-    for batch in multi_loader:
+    from datasets.samplers import ImbalancedDatasetSampler, StratifiedSampler
+    train_sampler = ImbalancedDatasetSampler(dataset=train_set)
+    train_loader = DataLoader(train_set, batch_size=16, sampler=train_sampler)
+    for batch in train_loader:
         print(batch.keys())
         print(batch['mri'].shape)
         print(batch['pet'].shape)
         print(batch['y'])
+        print(np.bincount(batch['y'].cpu().numpy() + 1))
         break
+
+    train_sampler = StratifiedSampler(class_vector=train_set.y, batch_size=16)
+    train_loader = DataLoader(train_set, batch_size=16, sampler=train_sampler)
+    for batch in train_loader:
+        print(np.bincount(batch['y'].cpu().numpy() + 1))

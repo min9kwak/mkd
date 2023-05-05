@@ -40,6 +40,9 @@ USE_TRANSFORMER=False
 
 AGG=sum
 
+BALANCE=False
+SAMPLER_TYPE=over
+
 for RANDOM_STATE in 2021
 do
   for USE_SPECIFIC in True
@@ -82,6 +85,8 @@ do
           --ce_only $CE_ONLY \
           --warmup $WARMUP \
           --cosine_warmup $COSINE_WARMUP \
+          --balance $BALANCE \
+          --sampler_type $SAMPLER_TYPE \
           --alpha_sim $ALPHA \
           --alpha_diff $ALPHA \
           --alpha_recon $ALPHA \

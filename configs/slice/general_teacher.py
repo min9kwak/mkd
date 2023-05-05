@@ -107,8 +107,9 @@ class SliceGeneralTeacher(ConfigBase):
 
     @staticmethod
     def task_specific_parser() -> argparse.ArgumentParser:
-        parser = argparse.ArgumentParser('Distillation', add_help=False)
+        parser = argparse.ArgumentParser('General Teacher', add_help=False)
         parser.add_argument('--balance', type=str2bool, default=True, help='apply class balance weight')
+        parser.add_argument('--sampler_type', type=str, default=None, choices=('over', 'stratified'))
 
         # Weight Alpha
         parser.add_argument('--alpha_sim', type=float, default=1.0)

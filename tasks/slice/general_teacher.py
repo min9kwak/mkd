@@ -11,7 +11,7 @@ from utils.metrics import classification_result
 from utils.logging import make_epoch_description, get_rich_pbar
 from utils.optimization import get_optimizer
 from utils.optimization import get_cosine_scheduler
-from datasets.samplers import ImbalancedDatasetSampler
+from datasets.samplers import ImbalancedDatasetSampler, StratifiedSampler
 
 
 class GeneralTeacher(object):
@@ -108,13 +108,26 @@ class GeneralTeacher(object):
             raise RuntimeError("Training not prepared.")
 
         # DataSet & DataLoader
-        train_sampler = ImbalancedDatasetSampler(dataset=datasets['train'])
-        loaders = {
-            'train': DataLoader(dataset=datasets['train'], batch_size=self.batch_size,
-                                sampler=train_sampler, drop_last=True),
-            'validation': DataLoader(dataset=datasets['validation'], batch_size=self.batch_size, drop_last=False),
-            'test': DataLoader(dataset=datasets['test'], batch_size=self.batch_size, drop_last=False)
-        }
+        train_sampler = None
+        if self.config.sampler_type == 'over':
+            train_sampler = ImbalancedDatasetSampler(dataset=datasets['train'])
+        elif self.config.sampler_type == 'stratified':
+            train_sampler = StratifiedSampler(class_vector=datasets['train'].y, batch_size=self.batch_size)
+
+        if train_sampler is not None:
+            loaders = {
+                'train': DataLoader(dataset=datasets['train'], batch_size=self.batch_size,
+                                    sampler=train_sampler, drop_last=True),
+                'validation': DataLoader(dataset=datasets['validation'], batch_size=self.batch_size, drop_last=False),
+                'test': DataLoader(dataset=datasets['test'], batch_size=self.batch_size, drop_last=False)
+            }
+        else:
+            loaders = {
+                'train': DataLoader(dataset=datasets['train'], batch_size=self.batch_size, shuffle=True,
+                                    sampler=train_sampler, drop_last=True),
+                'validation': DataLoader(dataset=datasets['validation'], batch_size=self.batch_size, drop_last=False),
+                'test': DataLoader(dataset=datasets['test'], batch_size=self.batch_size, drop_last=False)
+            }
 
         # Logging
         logger = kwargs.get('logger', None)
