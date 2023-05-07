@@ -352,6 +352,7 @@ class GeneralTeacher(object):
                 else:
                     logit = self.networks['classifier'](torch.cat([z_mri_general, z_pet_general], dim=1))
         loss_ce = self.loss_function_ce(logit, y)
+        loss_ce = loss_ce / (y != -1).sum() + 1e-6
 
         loss_sim = torch.tensor(0, dtype=torch.float16, device=loss_ce.device)
         loss_diff_specific = torch.tensor(0, dtype=torch.float16, device=loss_ce.device)
@@ -448,6 +449,7 @@ class GeneralTeacher(object):
                 else:
                     logit = self.networks['classifier'](torch.cat([z_mri_general, z_pet_general], dim=1))
         loss_ce = self.loss_function_ce(logit, y)
+        loss_ce = loss_ce / (y != -1).sum() + 1e-6
 
         loss = loss_ce + \
                self.config.alpha_sim * loss_sim + \

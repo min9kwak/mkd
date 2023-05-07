@@ -39,19 +39,20 @@ USE_SPECIFIC=True
 USE_TRANSFORMER=False
 
 AGG=sum
+ADD_TYPE=add
 
 BALANCE=False
 SAMPLER_TYPE=over
 
 for RANDOM_STATE in 2021
 do
-  for USE_SPECIFIC in True
+  for USE_SPECIFIC in True False
   do
-    for AGG in sum
+    for LEARNING_RATE in 0.001 0.0001
     do
-      for ALPHA in 0.5
+      for ALPHA in 0.5 1.0 2.0
       do
-        for ADD_TYPE in add
+        for SAMPLER_TYPE in over stratified
         do
           python ./run_general_teacher.py \
           --gpus $GPUS \

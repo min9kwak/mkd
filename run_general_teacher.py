@@ -135,7 +135,7 @@ def main_worker(local_rank: int, config: object):
     class_weight = None
     if config.balance:
         class_weight = torch.tensor(processor.class_weight_pet, dtype=torch.float).to(local_rank)
-    loss_function_ce = nn.CrossEntropyLoss(weight=class_weight, reduction='mean', ignore_index=-1)
+    loss_function_ce = nn.CrossEntropyLoss(weight=class_weight, reduction='sum', ignore_index=-1)
 
     # Similarity, Difference, and Reconstruction
     loss_function_sim = CMDLoss(n_moments=config.n_moments)
