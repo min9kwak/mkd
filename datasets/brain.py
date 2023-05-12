@@ -146,6 +146,8 @@ class BrainProcessor(object):
             complete_train = pd.concat([complete_train, u_complete_train]).reset_index(drop=True)
             incomplete_train = pd.concat([incomplete_train, u_incomplete_train]).reset_index(drop=True)
 
+            # TODO: update mri_total_train (add u_data...?)
+
         # 5. Parse
         mri_pet_complete_train = self.parse_data(complete_train)
         mri_incomplete_train = self.parse_data(incomplete_train)

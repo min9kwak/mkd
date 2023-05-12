@@ -68,7 +68,8 @@ def main_worker(local_rank: int, config: object):
     if config.train_slices == 'random':
         pass
     elif config.train_slices == 'fixed':
-        setattr(config, 'num_slices', 3)
+        num_slices = 3 * (2 * config.n_points + 1)
+        setattr(config, 'num_slices', num_slices)
     elif config.train_slices in ['sagittal', 'coronal', 'axial']:
         setattr(config, 'num_slices', 1)
     else:
@@ -78,12 +79,12 @@ def main_worker(local_rank: int, config: object):
         image_size_mri=config.image_size_mri, intensity_mri=config.intensity_mri, crop_size_mri=config.crop_size_mri,
         rotate_mri=config.rotate_mri, flip_mri=config.flip_mri, affine_mri=config.affine_mri,
         blur_std_mri=config.blur_std_mri, train_slices=config.train_slices, num_slices=config.num_slices,
-        slice_range=config.slice_range, prob=config.prob)
+        slice_range=config.slice_range, space=config.space, n_points=config.n_points, prob=config.prob)
     train_transform_pet, test_transform_pet = make_pet_transforms(
         image_size_pet=config.image_size_pet, intensity_pet=config.intensity_pet, crop_size_pet=config.crop_size_pet,
         rotate_pet=config.rotate_pet, flip_pet=config.flip_pet, affine_pet=config.affine_pet,
         blur_std_pet=config.blur_std_pet, train_slices=config.train_slices, num_slices=config.num_slices,
-        slice_range=config.slice_range, prob=config.prob)
+        slice_range=config.slice_range, space=config.space, n_points=config.n_points, prob=config.prob)
 
     # Dataset
     if config.missing_rate == -1.0:

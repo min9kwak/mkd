@@ -1,4 +1,5 @@
 import random
+import numpy as np
 
 import torch
 from monai.transforms import (
@@ -52,16 +53,23 @@ class RandomSlices(Transform):
 class FixedSlices(Transform):
     backend = [TransformBackends.TORCH, TransformBackends.NUMPY]
 
-    def __init__(self, image_size: int = 72):
-        self.image_size = image_size
-        self.center = image_size // 2
+    def __init__(self, image_size: int = 72, space: int = 3, n_points: int = 5):
+        '''
+        if n_points=0, slice only at the center point
+        total number of slices = 3 * (2 * n_points + 1)
+        '''
+
+        center = image_size // 2
+        self.slicing_points = center + np.linspace(start=-n_points * space,
+                                                   stop=n_points * space,
+                                                   num=2 * n_points + 1)
+        self.slicing_points = self.slicing_points.astype(int)
 
     def __call__(self, img, *args, **kwargs):
 
-        ret = []
-        ret.append(img[:, self.center, :, :])
-        ret.append(img[:, :, self.center, :])
-        ret.append(img[:, :, :, self.center])
+        ret = [img[:, i, :, :] for i in self.slicing_points] + \
+            [img[:, :, i, :] for i in self.slicing_points] + \
+            [img[:, :, :, i] for i in self.slicing_points]
 
         return ret
 
@@ -96,6 +104,8 @@ def make_mri_transforms(image_size_mri: int = 72,
                         train_slices: str = 'random',
                         num_slices: int = 5,
                         slice_range: float = 0.15,
+                        space: int = 3,
+                        n_points: int = 5,
                         prob: float = 0.5,
                         **kwargs):
 
@@ -138,7 +148,7 @@ def make_mri_transforms(image_size_mri: int = 72,
                                             image_size=slice_size,
                                             slice_range=slice_range))
     elif train_slices == 'fixed':
-        train_transform.append(FixedSlices(image_size=slice_size))
+        train_transform.append(FixedSlices(image_size=slice_size, space=space, n_points=n_points))
     elif train_slices in ['sagittal', 'coronal', 'axial']:
         train_transform.append(SingleSlices(image_size=slice_size, slice_view=train_slices))
     else:
@@ -154,7 +164,7 @@ def make_mri_transforms(image_size_mri: int = 72,
 
     # slice - testing
     if train_slices in ['random', 'fixed']:
-        test_transform.append(FixedSlices(image_size=slice_size))
+        test_transform.append(FixedSlices(image_size=slice_size, space=space, n_points=n_points))
     elif train_slices in ['sagittal', 'coronal', 'axial']:
         test_transform.append(SingleSlices(image_size=slice_size, slice_view=train_slices))
     else:
@@ -176,6 +186,8 @@ def make_pet_transforms(image_size_pet: int = 72,
                         train_slices: str = 'random',
                         num_slices: int = 5,
                         slice_range: float = 0.15,
+                        space: int = 3,
+                        n_points: int = 5,
                         prob: float = 0.5,
                         **kwargs):
 
@@ -203,7 +215,7 @@ def make_pet_transforms(image_size_pet: int = 72,
     if flip_pet:
         train_transform.append(RandFlip(prob=prob))
     if blur_std_pet:
-        train_transform.append(RandGaussianNoise(prob=prob, std=blur_std))
+        train_transform.append(RandGaussianNoise(prob=prob, std=blur_std_pet))
 
     if crop_size_pet is not None:
         slice_size = crop_size_pet
@@ -216,7 +228,7 @@ def make_pet_transforms(image_size_pet: int = 72,
                                             image_size=slice_size,
                                             slice_range=slice_range))
     elif train_slices == 'fixed':
-        train_transform.append(FixedSlices(image_size=slice_size))
+        train_transform.append(FixedSlices(image_size=slice_size, space=space, n_points=n_points))
     elif train_slices in ['sagittal', 'coronal', 'axial']:
         train_transform.append(SingleSlices(image_size=slice_size, slice_view=train_slices))
     else:
@@ -232,7 +244,7 @@ def make_pet_transforms(image_size_pet: int = 72,
 
     # slice - testing
     if train_slices in ['random', 'fixed']:
-        test_transform.append(FixedSlices(image_size=slice_size))
+        test_transform.append(FixedSlices(image_size=slice_size, space=space, n_points=n_points))
     elif train_slices in ['sagittal', 'coronal', 'axial']:
         test_transform.append(SingleSlices(image_size=slice_size, slice_view=train_slices))
     else:

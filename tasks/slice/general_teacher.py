@@ -70,7 +70,8 @@ class GeneralTeacher(object):
         if self.config.train_slices == 'random':
             self.test_num_slices = 3
         elif self.config.train_slices == 'fixed':
-            self.test_num_slices = 3
+            # Use all slices for test
+            self.test_num_slices = self.config.num_slices
         elif self.config.train_slices in ['sagittal', 'coronal', 'axial']:
             self.test_num_slices = 1
         else:

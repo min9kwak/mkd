@@ -46,8 +46,14 @@ class SliceGeneralTeacher(ConfigBase):
         # slice
         parser.add_argument('--train_slices', type=str, default='fixed',
                             choices=('random', 'fixed', 'sagittal', 'coronal', 'axial'))
+
+        # random
         parser.add_argument('--num_slices', type=int, default=5)
         parser.add_argument('--slice_range', type=float, default=0.15)
+
+        # fixed
+        parser.add_argument('--space', type=int, default=3)
+        parser.add_argument('--n_points', type=int, default=5)
 
         return parser
 

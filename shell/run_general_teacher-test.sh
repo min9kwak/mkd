@@ -7,6 +7,8 @@ CROP_SIZE=64
 MCI_ONLY=True
 USE_UNLABELED=True
 TRAIN_SLICES=fixed
+SPACE=2
+N_POINTS=5
 MISSING_RATE=-1
 
 ENCODER_TYPE=resnet50
@@ -26,11 +28,9 @@ CE_ONLY=False
 WARMUP=-1
 LOSS_DIFF="mse"
 
-ALPHA_SIM=0.1
-ALPHA_DIFF=0.1
-ALPHA_RECON=0.1
-
-ALPHA=0.2
+ALPHA_SIM=1.0
+ALPHA_DIFF=2.0
+ALPHA_RECON=0.5
 
 RANDOM_STATE=2021
 
@@ -46,13 +46,13 @@ SAMPLER_TYPE=over
 
 for RANDOM_STATE in 2021
 do
-  for USE_SPECIFIC in True False
+  for USE_SPECIFIC in False
   do
-    for LEARNING_RATE in 0.001 0.0001
+    for LEARNING_RATE in 0.001
     do
-      for ALPHA in 0.5 1.0 2.0
+      for SPACE in 2
       do
-        for SAMPLER_TYPE in over stratified
+        for SAMPLER_TYPE in stratified
         do
           python ./run_general_teacher.py \
           --gpus $GPUS \
@@ -65,6 +65,8 @@ do
           --crop_size_mri $CROP_SIZE \
           --crop_size_pet $CROP_SIZE \
           --train_slices $TRAIN_SLICES \
+          --space $SPACE \
+          --n_points $N_POINTS \
           --extractor_type $ENCODER_TYPE \
           --small_kernel $SMALL_KERNEL \
           --random_state $RANDOM_STATE \
@@ -88,9 +90,9 @@ do
           --cosine_warmup $COSINE_WARMUP \
           --balance $BALANCE \
           --sampler_type $SAMPLER_TYPE \
-          --alpha_sim $ALPHA \
-          --alpha_diff $ALPHA \
-          --alpha_recon $ALPHA \
+          --alpha_sim $ALPHA_SIM \
+          --alpha_diff $ALPHA_DIFF \
+          --alpha_recon $ALPHA_RECON \
           --agg $AGG
         done
       done
