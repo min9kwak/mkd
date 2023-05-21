@@ -252,10 +252,11 @@ class BrainBase(Dataset):
 
     @staticmethod
     def load_image(path):
-        # if math.isnan(path):
-        #     raise ValueError("Path is NaN")
-        with open(path, 'rb') as fb:
-            image = pickle.load(fb)
+        if pd.isna(path):
+            image = np.nan
+        else:
+            with open(path, 'rb') as fb:
+                image = pickle.load(fb)
         return image
 
 
@@ -318,7 +319,7 @@ if __name__ == '__main__':
 
     from torch.utils.data import DataLoader
     from datasets.slice.transforms import make_pet_transforms
-    import matplotlib.pyplot as plt
+    from datasets.samplers import ImbalancedDatasetSampler, StratifiedSampler
 
     processor = BrainProcessor(root='D:/data/ADNI',
                                data_file='labels/data_info_multi.csv',
@@ -331,20 +332,44 @@ if __name__ == '__main__':
     for k, v in datasets.items():
         print(k, f": {len(v['y'])} observations")
 
-    train_set = BrainMulti(datasets['mri_pet_complete_train'], None, None)
+    train_transform_pet, test_transform_pet = make_pet_transforms(
+        image_size_pet=72, intensity_pet='scale', crop_size_pet=64, rotate_pet=True,
+        flip_pet=True, affine_pet=False, blur_std_pet=None, train_slices='fixed',
+        num_slices=5, slice_range=0.15, space=3, n_points=5, prob=0.5)
 
-    from datasets.samplers import ImbalancedDatasetSampler, StratifiedSampler
-    train_sampler = ImbalancedDatasetSampler(dataset=train_set)
-    train_loader = DataLoader(train_set, batch_size=16, sampler=train_sampler)
-    for batch in train_loader:
-        print(batch.keys())
-        print(batch['mri'].shape)
-        print(batch['pet'].shape)
-        print(batch['y'])
-        print(np.bincount(batch['y'].cpu().numpy() + 1))
-        break
+    # datasets_train = {}
+    # for key, value in datasets['mri_pet_complete_train'].items():
+    #     if isinstance(value, list):
+    #         datasets_train[key] = datasets['mri_pet_complete_train'][key] + datasets['mri_incomplete_train'][key]
+    #     else:
+    #         datasets_train[key] = np.concatenate(
+    #             [datasets['mri_pet_complete_train'][key], datasets['mri_incomplete_train'][key]]
+    #         )
+
+    train_set = BrainMulti(dataset=datasets['mri_pet_complete_train'],
+                           mri_transform=train_transform_pet,
+                           pet_transform=train_transform_pet)
+    train_mri_set = BrainMRI(dataset=datasets['mri_incomplete_train'],
+                             mri_transform=train_transform_pet)
 
     train_sampler = StratifiedSampler(class_vector=train_set.y, batch_size=16)
     train_loader = DataLoader(train_set, batch_size=16, sampler=train_sampler)
-    for batch in train_loader:
-        print(np.bincount(batch['y'].cpu().numpy() + 1))
+
+    train_mri_sampler = StratifiedSampler(class_vector=train_mri_set.y, batch_size=16)
+    train_mri_loader = DataLoader(train_mri_set, batch_size=16, sampler=train_mri_sampler)
+
+    for i, (batch, batch_mri) in enumerate(zip(train_loader, train_mri_loader)):
+        print(i)
+        print(batch['y'])
+        print(batch_mri['y'])
+        break
+    len(train_loader)
+    len(train_mri_loader)
+
+    x_mri = torch.concat(batch['mri']).float()
+    x_mri_in = torch.concat(batch_mri['mri']).float()
+    y = batch['y'].long().repeat(33)
+    y_in = batch_mri['y'].long().repeat(33)
+
+    torch.concat([x_mri, x_mri_in]).shape
+    torch.concat([y, y_in]).shape
