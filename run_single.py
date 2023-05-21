@@ -67,6 +67,7 @@ def main_worker(local_rank: int, config: object):
     if config.train_slices == 'random':
         pass
     elif config.train_slices == 'fixed':
+        # TODO: change
         setattr(config, 'num_slices', 3)
     elif config.train_slices in ['sagittal', 'coronal', 'axial']:
         setattr(config, 'num_slices', 1)
