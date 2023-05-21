@@ -7,7 +7,7 @@ CROP_SIZE=64
 MCI_ONLY=True
 USE_UNLABELED=True
 TRAIN_SLICES=fixed
-SPACE=2
+SPACE=3
 N_POINTS=5
 MISSING_RATE=-1
 
@@ -35,14 +35,14 @@ ALPHA_RECON=0.5
 RANDOM_STATE=2021
 
 USE_PROJECTOR=True
-USE_SPECIFIC=True
+USE_SPECIFIC=False
 USE_TRANSFORMER=False
 
 AGG=sum
 ADD_TYPE=add
 
-BALANCE=False
-SAMPLER_TYPE=over
+BALANCE=True
+SAMPLER_TYPE=stratified
 
 for RANDOM_STATE in 2021
 do
@@ -50,7 +50,7 @@ do
   do
     for LEARNING_RATE in 0.001
     do
-      for SPACE in 2
+      for SPACE in 3
       do
         for SAMPLER_TYPE in stratified
         do

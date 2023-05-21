@@ -21,6 +21,8 @@ from utils.loss import DiffLoss, CMDLoss
 from utils.logging import get_rich_logger
 from utils.gpu import set_gpu
 
+import argparse
+
 
 def main():
     """Main function for single/distributed linear classification."""
@@ -54,7 +56,7 @@ def main():
         main_worker(0, config=config)  # single machine, single gpu
 
 
-def main_worker(local_rank: int, config: object):
+def main_worker(local_rank: int, config: argparse.Namespace):
     """Single process."""
 
     torch.cuda.set_device(local_rank)
