@@ -1,5 +1,6 @@
 from models.slice.backbone import ResNetBackbone, DenseNetBackbone
 from models.slice.head import GAPLinearClassifier, GAPLinearProjector, LinearEncoder, LinearDecoder
+from models.slice.head import MLPEncoder, MLPDecoder
 from models.slice.head import Classifier, TransformerEncoder
 
 
@@ -118,28 +119,56 @@ def build_networks_general_teacher(config, **kwargs):
 
     # 3. Encoder
     if config.use_projector:
-        encoder_general = LinearEncoder(in_channels=config.hidden, out_channels=config.hidden // 2,
+        if config.encoder_type == 'linear':
+            encoder_general = LinearEncoder(in_channels=config.hidden, out_channels=config.hidden // 2,
+                                            act=config.encoder_act)
+            encoder_mri = LinearEncoder(in_channels=config.hidden, out_channels=config.hidden // 2,
                                         act=config.encoder_act)
-        encoder_mri = LinearEncoder(in_channels=config.hidden, out_channels=config.hidden // 2,
-                                    act=config.encoder_act)
-        encoder_pet = LinearEncoder(in_channels=config.hidden, out_channels=config.hidden // 2,
-                                    act=config.encoder_act)
+            encoder_pet = LinearEncoder(in_channels=config.hidden, out_channels=config.hidden // 2,
+                                        act=config.encoder_act)
+        elif config.encoder_type == 'mlp':
+            encoder_general = MLPEncoder(in_channels=config.hidden, out_channels=config.hidden // 2,
+                                         act=config.encoder_act)
+            encoder_mri = MLPEncoder(in_channels=config.hidden, out_channels=config.hidden // 2,
+                                     act=config.encoder_act)
+            encoder_pet = MLPEncoder(in_channels=config.hidden, out_channels=config.hidden // 2,
+                                     act=config.encoder_act)
     else:
         assert extractor_mri.out_channels == extractor_pet.out_channels
-        encoder_general = LinearEncoder(in_channels=extractor_mri.out_channels, out_channels=config.hidden,
+        if config.encoder_type == 'linear':
+            encoder_general = LinearEncoder(in_channels=extractor_mri.out_channels, out_channels=config.hidden,
+                                            act=config.encoder_act)
+            encoder_mri = LinearEncoder(in_channels=extractor_mri.out_channels, out_channels=config.hidden,
                                         act=config.encoder_act)
-        encoder_mri = LinearEncoder(in_channels=extractor_mri.out_channels, out_channels=config.hidden,
-                                    act=config.encoder_act)
-        encoder_pet = LinearEncoder(in_channels=extractor_pet.out_channels, out_channels=config.hidden,
-                                    act=config.encoder_act)
+            encoder_pet = LinearEncoder(in_channels=extractor_pet.out_channels, out_channels=config.hidden,
+                                        act=config.encoder_act)
+        elif config.encoder_type == 'mlp':
+            encoder_general = MLPEncoder(in_channels=config.hidden, out_channels=config.hidden // 2,
+                                         act=config.encoder_act)
+            encoder_mri = MLPEncoder(in_channels=config.hidden, out_channels=config.hidden // 2,
+                                     act=config.encoder_act)
+            encoder_pet = MLPEncoder(in_channels=config.hidden, out_channels=config.hidden // 2,
+                                     act=config.encoder_act)
 
     # 4. Decoder
     if config.use_projector:
-        decoder_mri = LinearDecoder(in_channels=config.hidden // 2, out_channels=config.hidden)
-        decoder_pet = LinearDecoder(in_channels=config.hidden // 2, out_channels=config.hidden)
+        if config.encoder_type == 'linear':
+            decoder_mri = LinearDecoder(in_channels=config.hidden // 2, out_channels=config.hidden)
+            decoder_pet = LinearDecoder(in_channels=config.hidden // 2, out_channels=config.hidden)
+        elif config.encoder_type == 'mlp':
+            decoder_mri = MLPDecoder(in_channels=config.hidden // 2, out_channels=config.hidden,
+                                     act=config.encoder_act)
+            decoder_pet = MLPDecoder(in_channels=config.hidden // 2, out_channels=config.hidden,
+                                     act=config.encoder_act)
     else:
-        decoder_mri = LinearDecoder(in_channels=config.hidden, out_channels=extractor_mri.out_channels)
-        decoder_pet = LinearDecoder(in_channels=config.hidden, out_channels=extractor_pet.out_channels)
+        if config.encoder_type == 'linear':
+            decoder_mri = LinearDecoder(in_channels=config.hidden, out_channels=extractor_mri.out_channels)
+            decoder_pet = LinearDecoder(in_channels=config.hidden, out_channels=extractor_pet.out_channels)
+        elif config.encoder_type == 'mlp':
+            decoder_mri = MLPDecoder(in_channels=config.hidden, out_channels=extractor_mri.out_channels,
+                                     act=config.encoder_act)
+            decoder_pet = MLPDecoder(in_channels=config.hidden, out_channels=extractor_pet.out_channels,
+                                     act=config.encoder_act)
 
     # 5. Classifier
     if config.use_transformer:

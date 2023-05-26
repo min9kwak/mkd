@@ -17,7 +17,7 @@ from datasets.brain import BrainProcessor, BrainMulti
 from datasets.slice.transforms import make_mri_transforms, make_pet_transforms
 from models.slice.build import build_networks_general_teacher
 
-from utils.loss import DiffLoss, CMDLoss
+from utils.loss import DiffLoss, CMDLoss, CosineLoss
 from utils.logging import get_rich_logger
 from utils.gpu import set_gpu
 
@@ -141,7 +141,13 @@ def main_worker(local_rank: int, config: argparse.Namespace):
     loss_function_ce = nn.CrossEntropyLoss(weight=class_weight, reduction='sum', ignore_index=-1)
 
     # Similarity, Difference, and Reconstruction
-    loss_function_sim = CMDLoss(n_moments=config.n_moments)
+    if config.loss_sim == 'cmd':
+        loss_function_sim = CMDLoss(n_moments=config.n_moments)
+    elif config.loss_sim == 'cosine':
+        loss_function_sim = CosineLoss()
+    else:
+        raise ValueError
+
     if config.loss_diff == 'diff':
         loss_function_diff = DiffLoss()
     elif config.loss_diff == 'mse':

@@ -207,6 +207,73 @@ class LinearDecoder(LinearHeadBase):
         return self.layers(x)
 
 
+class MLPEncoder(LinearHeadBase):
+    def __init__(self, in_channels: int, out_channels: int, act):
+        super(MLPEncoder, self).__init__(in_channels, out_channels)
+
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+
+        self.act = act
+        if self.act == 'relu':
+            act_layer = ('relu', nn.ReLU(inplace=False))
+        elif self.act == 'lrelu':
+            act_layer = ('lrelu', nn.LeakyReLU(negative_slope=0.1, inplace=False))
+        elif self.act == 'sigmoid':
+            act_layer = ('sigmoid', nn.Sigmoid())
+        else:
+            raise ValueError
+
+        self.layers = nn.Sequential(
+            collections.OrderedDict(
+                [
+                    ('linear1', nn.Linear(self.in_channels, self.out_channels)),
+                    act_layer,
+                    ('linear2', nn.Linear(self.out_channels, self.out_channels))
+                ]
+            )
+        )
+        initialize_weights(self.layers)
+
+    def forward(self, x: torch.Tensor):
+        out = self.layers(x)
+        out = F.normalize(out, p=2, dim=1)
+        return out
+
+
+class MLPDecoder(LinearHeadBase):
+    def __init__(self, in_channels: int, out_channels: int, act):
+        super(MLPDecoder, self).__init__(in_channels, out_channels)
+
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+
+        self.act = act
+        if self.act == 'relu':
+            act_layer = ('relu', nn.ReLU(inplace=False))
+        elif self.act == 'lrelu':
+            act_layer = ('lrelu', nn.LeakyReLU(negative_slope=0.1, inplace=False))
+        elif self.act == 'sigmoid':
+            act_layer = ('sigmoid', nn.Sigmoid())
+        else:
+            raise ValueError
+
+        self.layers = nn.Sequential(
+            collections.OrderedDict(
+                [
+                    ('linear1', nn.Linear(self.in_channels, self.in_channels)),
+                    act_layer,
+                    ('linear2', nn.Linear(self.in_channels, self.out_channels))
+                ]
+            )
+        )
+        initialize_weights(self.layers)
+
+    def forward(self, x: torch.Tensor):
+        out = self.layers(x)
+        return out
+
+
 class Classifier(LinearHeadBase):
     def __init__(self, in_channels: int, n_classes: int, mlp: bool = False, dropout: float = 0.0):
         super(Classifier, self).__init__(in_channels, n_classes)

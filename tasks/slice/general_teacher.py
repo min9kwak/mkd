@@ -35,8 +35,6 @@ class GeneralTeacher(object):
         self.networks = {k: v for k, v in self.networks.items() if v is not None}
         self.network_names = list(self.networks.keys())
 
-        self.train_step = None
-
     def prepare(self,
                 config: argparse.Namespace,
                 loss_function_ce,
@@ -318,7 +316,7 @@ class GeneralTeacher(object):
         loss_recon = loss_recon_mri + loss_recon_pet
 
         # classification
-        logit = self.networks['classifier'](z_mri_general + z_pet_general)
+        logit = self.networks['classifier']((z_mri_general + z_pet_general) / 2)
 
         loss_ce = self.loss_function_ce(logit, y)
         loss_ce = loss_ce / ((y != -1).sum() + 1e-6)

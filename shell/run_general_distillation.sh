@@ -30,7 +30,7 @@ do
         for TEMPERATURE in 1.0 2.0
         do
           TEACHER_DIR="${TEACHER_PRE}${HASH}"
-          python ./run_general_teacher.py \
+          python ./run_general_distillation.py \
           --gpus $GPUS \
           --server $SERVER \
           --epochs $EPOCHS \

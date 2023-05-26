@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 class DiffLoss(nn.Module):
@@ -27,6 +28,17 @@ class DiffLoss(nn.Module):
         diff_loss = torch.mean((input1_l2.t().mm(input2_l2)).pow(2))
 
         return diff_loss
+
+
+class CosineLoss(nn.Module):
+    def __init__(self):
+        super(CosineLoss, self).__init__()
+
+    def forward(self, x1: torch.Tensor, x2: torch.Tensor):
+        # x1 and x2 are L2-normalized
+        cos = F.cosine_similarity(x1, x2, dim=1)
+        loss = (1 - cos) / 2
+        return loss.mean()
 
 
 class CMDLoss(nn.Module):
@@ -63,10 +75,12 @@ class CMDLoss(nn.Module):
 if __name__ == '__main__':
 
     z_1 = torch.rand(size=(10, 2))
-    z_2 = torch.rand(size=(10, 1))
+    z_2 = torch.rand(size=(10, 2))
 
     criterion_cmd = CMDLoss(n_moments=5)
+    criterion_cosine = CosineLoss()
     criterion_diff = DiffLoss()
 
     loss_cmd = criterion_cmd(z_1, z_2)
+    loss_cosine = criterion_cosine(z_1, z_2)
     loss_diff = criterion_diff(z_1, z_2)

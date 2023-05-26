@@ -11,7 +11,7 @@ SPACE=3
 N_POINTS=5
 MISSING_RATE=-1
 
-ENCODER_TYPE=resnet50
+EXTRACTOR_TYPE=resnet50
 SMALL_KERNEL=True
 
 HIDDEN=128
@@ -19,6 +19,7 @@ SWAP=False
 MLP=False
 DROPOUT=0.0
 ENCODER_ACT=sigmoid
+ENCODER_TYPE=mlp
 
 EPOCHS=100
 LEARNING_RATE=0.001
@@ -26,6 +27,7 @@ COSINE_WARMUP=0
 
 CE_ONLY=False
 WARMUP=-1
+LOSS_SIM="cosine"
 LOSS_DIFF="mse"
 
 ALPHA_SIM=1.0
@@ -67,15 +69,17 @@ do
           --train_slices $TRAIN_SLICES \
           --space $SPACE \
           --n_points $N_POINTS \
-          --extractor_type $ENCODER_TYPE \
+          --extractor_type $EXTRACTOR_TYPE \
           --small_kernel $SMALL_KERNEL \
           --random_state $RANDOM_STATE \
           --hidden $HIDDEN \
           --swap $SWAP \
+          --loss_sim $LOSS_SIM \
           --loss_diff $LOSS_DIFF \
           --mlp $MLP \
           --dropout $DROPOUT \
           --encoder_act $ENCODER_ACT \
+          --encoder_type $ENCODER_TYPE \
           --epochs $EPOCHS \
           --batch_size 16 \
           --optimizer adamw \

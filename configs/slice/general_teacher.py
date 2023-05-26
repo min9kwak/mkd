@@ -71,6 +71,7 @@ class SliceGeneralTeacher(ConfigBase):
         parser.add_argument('--hidden', type=int, default=128)
         parser.add_argument('--swap', type=str2bool, default=False)
         parser.add_argument('--encoder_act', type=str, default='sigmoid', choices=('relu', 'lrelu', 'sigmoid'))
+        parser.add_argument('--encoder_type', type=str, default='mlp', choices=('linear', 'mlp'))
 
         # Classifier
         parser.add_argument('--mlp', type=str2bool, default=False) # classifier_type - linear, mlp, transformer
@@ -124,6 +125,7 @@ class SliceGeneralTeacher(ConfigBase):
 
         # Loss
         parser.add_argument('--loss_diff', type=str, default='diff', choices=('diff', 'mse'))
+        parser.add_argument('--loss_sim', type=str, default='cosine', choices=('cosine', 'cmd'))
         parser.add_argument('--n_moments', type=int, default=5)
         parser.add_argument('--agg', type=str, default='sum', choices=('sum', 'mean'))
 
