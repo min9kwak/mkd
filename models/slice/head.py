@@ -185,8 +185,10 @@ class LinearEncoder(LinearHeadBase):
         initialize_weights(self.layers)
 
     def forward(self, x: torch.Tensor):
-        return self.layers(x)
-
+        out = self.layers(x)
+        # TODO: normalize after activation?
+        out = F.normalize(out, p=2, dim=1)
+        return out
 
 class LinearDecoder(LinearHeadBase):
     def __init__(self, in_channels: int, out_channels: int):
