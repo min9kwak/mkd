@@ -84,7 +84,12 @@ class GeneralTeacher(object):
         # Optimization setting
         params = []
         for name in self.networks.keys():
-            params = params + [{'params': self.networks[name].parameters(), 'lr': self.config.learning_rate}]
+            if name.startswith('encoder_') or name.startswith('decoder_'):
+                params = params + [{'params': self.networks[name].parameters(),
+                                    'lr': self.config.learning_rate / 10}]
+            else:
+                params = params + [{'params': self.networks[name].parameters(),
+                                    'lr': self.config.learning_rate}]
 
         self.optimizer = get_optimizer(params=params,
                                        name=config.optimizer,
