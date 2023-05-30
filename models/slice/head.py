@@ -178,7 +178,8 @@ class LinearEncoder(LinearHeadBase):
             collections.OrderedDict(
                 [
                     ('linear', nn.Linear(self.in_channels, self.out_channels)),
-                    act_layer
+                    act_layer,
+                    ('norm', nn.LayerNorm(self.out_channels)),
                 ]
             )
         )
@@ -231,6 +232,7 @@ class MLPEncoder(LinearHeadBase):
             collections.OrderedDict(
                 [
                     ('linear1', nn.Linear(self.in_channels, self.out_channels)),
+                    ('norm', nn.LayerNorm(self.out_channels)),
                     act_layer,
                     ('linear2', nn.Linear(self.out_channels, self.out_channels))
                 ]
@@ -266,6 +268,7 @@ class MLPDecoder(LinearHeadBase):
                 [
                     ('linear1', nn.Linear(self.in_channels, self.in_channels)),
                     act_layer,
+                    ('norm', nn.LayerNorm(self.in_channels)),
                     ('linear2', nn.Linear(self.in_channels, self.out_channels))
                 ]
             )
