@@ -36,8 +36,8 @@ class CosineLoss(nn.Module):
 
     def forward(self, x1: torch.Tensor, x2: torch.Tensor):
         # x1 and x2 are L2-normalized
-        cos = F.cosine_similarity(x1, x2, dim=1)
-        loss = (1 - cos) / 2
+        loss = torch.einsum('nc,nc->n', [x1, x2])
+        loss = 1 - loss
         return loss.mean()
 
 

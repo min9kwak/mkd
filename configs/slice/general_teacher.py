@@ -126,7 +126,7 @@ class SliceGeneralTeacher(ConfigBase):
 
         # Loss
         parser.add_argument('--loss_diff', type=str, default='diff', choices=('diff', 'mse'))
-        parser.add_argument('--loss_sim', type=str, default='cosine', choices=('cosine', 'cmd', 'l2'))
+        parser.add_argument('--loss_sim', type=str, default='cosine', choices=('cosine', 'cmd', 'l2', 'mse'))
         parser.add_argument('--n_moments', type=int, default=5)
         parser.add_argument('--agg', type=str, default='sum', choices=('sum', 'mean'))
 
