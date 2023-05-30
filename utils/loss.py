@@ -47,7 +47,7 @@ class L2Loss(nn.Module):
 
     def forward(self, x1: torch.Tensor, x2: torch.Tensor):
         # x1 and x2 are L2-normalized
-        loss = torch.norm(u_norm - v_norm, p=2, dim=1)
+        loss = torch.norm(x1 - x2, p=2, dim=1)
         return loss.mean()
 
 
@@ -57,7 +57,7 @@ class MSELoss(nn.Module):
 
     def forward(self, x1: torch.Tensor, x2: torch.Tensor):
         # x1 and x2 are L2-normalized
-        loss = torch.norm(u_norm - v_norm, p=2, dim=1)
+        loss = torch.norm(x1 - x2, p=2, dim=1)
         return loss.mean()
 
 

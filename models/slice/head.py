@@ -190,6 +190,7 @@ class LinearEncoder(LinearHeadBase):
         out = F.normalize(out, p=2, dim=1)
         return out
 
+
 class LinearDecoder(LinearHeadBase):
     def __init__(self, in_channels: int, out_channels: int):
         super(LinearDecoder, self).__init__(in_channels, out_channels)
