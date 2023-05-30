@@ -119,13 +119,14 @@ class SliceGeneralTeacher(ConfigBase):
         parser.add_argument('--sampler_type', type=str, default=None, choices=('over', 'stratified'))
 
         # Weight Alpha
+        parser.add_argument('--alpha_ce', type=float, default=1.0)
         parser.add_argument('--alpha_sim', type=float, default=1.0)
         parser.add_argument('--alpha_diff', type=float, default=0.5)
         parser.add_argument('--alpha_recon', type=float, default=1.0)
 
         # Loss
         parser.add_argument('--loss_diff', type=str, default='diff', choices=('diff', 'mse'))
-        parser.add_argument('--loss_sim', type=str, default='cosine', choices=('cosine', 'cmd'))
+        parser.add_argument('--loss_sim', type=str, default='cosine', choices=('cosine', 'cmd', 'l2'))
         parser.add_argument('--n_moments', type=int, default=5)
         parser.add_argument('--agg', type=str, default='sum', choices=('sum', 'mean'))
 

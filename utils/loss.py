@@ -41,6 +41,26 @@ class CosineLoss(nn.Module):
         return loss.mean()
 
 
+class L2Loss(nn.Module):
+    def __init__(self):
+        super(L2Loss, self).__init__()
+
+    def forward(self, x1: torch.Tensor, x2: torch.Tensor):
+        # x1 and x2 are L2-normalized
+        loss = torch.norm(u_norm - v_norm, p=2, dim=1)
+        return loss.mean()
+
+
+class MSELoss(nn.Module):
+    def __init__(self):
+        super(MSELoss, self).__init__()
+
+    def forward(self, x1: torch.Tensor, x2: torch.Tensor):
+        # x1 and x2 are L2-normalized
+        loss = torch.norm(u_norm - v_norm, p=2, dim=1)
+        return loss.mean()
+
+
 class CMDLoss(nn.Module):
     """
     Adapted from https://github.com/wzell/cmd/blob/master/models/domain_regularizer.py
@@ -74,13 +94,85 @@ class CMDLoss(nn.Module):
 
 if __name__ == '__main__':
 
-    z_1 = torch.rand(size=(10, 2))
-    z_2 = torch.rand(size=(10, 2))
+    z1 = torch.rand(size=(16, 64))
+    z2 = torch.rand(size=(16, 64))
 
-    criterion_cmd = CMDLoss(n_moments=5)
-    criterion_cosine = CosineLoss()
-    criterion_diff = DiffLoss()
+    z1 = F.normalize(z1, p=2, dim=1)
+    z2 = F.normalize(z2, p=2, dim=1)
 
-    loss_cmd = criterion_cmd(z_1, z_2)
-    loss_cosine = criterion_cosine(z_1, z_2)
-    loss_diff = criterion_diff(z_1, z_2)
+    # F.cosine_similarity
+    loss_cosine = F.cosine_similarity(z1, z2, dim=1)
+    loss_cosine.mean()
+
+    # einsum
+    loss_einsum = torch.einsum('nc,nc->n', [z1, z2])
+
+
+    #
+    import torch
+
+    # Random tensors for demonstration purposes
+    u = torch.randn(size=(10, 64))
+    v = torch.randn(size=(10, 64))
+
+    # Normalize the vectors
+    u_norm = F.normalize(u, p=2, dim=1)
+    v_norm = F.normalize(v, p=2, dim=1)
+
+    # Compute cosine similarity
+    cos_sim = F.cosine_similarity(u_norm, v_norm)
+
+    # Compute normalized L2 loss
+    l2_loss = torch.norm(u_norm - v_norm, p=2, dim=1)
+
+    # Compute MSE loss
+    mse = F.mse_loss(u_norm, v_norm)
+
+    # To show the relationship
+    cos_sim_from_mse = 1 - mse
+
+    print(f"Cosine Similarity: {cos_sim.mean()}")
+    print(f"MSE loss: {mse}")
+    print(f"Cosine Similarity computed from MSE loss: {cos_sim_from_mse}")
+
+    # To show the relationship
+    cos_sim_from_l2 = 1 - 0.5 * (l2_loss ** 2)
+    l2_from_cos_sim = torch.sqrt((1 - cos_sim) * 2)
+
+    print(f"Cosine Similarity: {cos_sim}")
+    print(f"Normalized L2 loss: {l2_loss}")
+    print(f"Cosine Similarity computed from L2 loss: {cos_sim_from_l2}")
+    print(f"L2 loss computed from Cosine Similarity: {l2_from_cos_sim}")
+
+
+
+
+
+    ###
+    import torch
+    from torch.nn.functional import cosine_similarity, normalize, mse_loss
+
+    # Random tensors for demonstration purposes
+    u = torch.randn(100, 64)
+    v = torch.randn(100, 64)
+
+    # Normalize the vectors
+    u_norm = normalize(u, p=2, dim=1)
+    v_norm = normalize(v, p=2, dim=1)
+
+    # Compute cosine similarity
+    cos_sim = cosine_similarity(u_norm, v_norm)
+
+    # Compute MSE loss
+    mse = mse_loss(u_norm, v_norm, reduction='none').mean(1)
+
+    # Compute mean values
+    mean_cos_sim = cos_sim.mean()
+    mean_mse = mse.mean()
+
+    # To show the relationship
+    cos_sim_from_mean_mse = 1 - mean_mse
+
+    print(f"Mean Cosine Similarity: {mean_cos_sim}")
+    print(f"Mean MSE loss: {mean_mse}")
+    print(f"Cosine Similarity computed from mean MSE loss: {cos_sim_from_mean_mse}")

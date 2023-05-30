@@ -17,7 +17,7 @@ from datasets.brain import BrainProcessor, BrainMulti
 from datasets.slice.transforms import make_mri_transforms, make_pet_transforms
 from models.slice.build import build_networks_general_teacher
 
-from utils.loss import DiffLoss, CMDLoss, CosineLoss
+from utils.loss import DiffLoss, CMDLoss, CosineLoss, L2Loss
 from utils.logging import get_rich_logger
 from utils.gpu import set_gpu
 
@@ -145,6 +145,10 @@ def main_worker(local_rank: int, config: argparse.Namespace):
         loss_function_sim = CMDLoss(n_moments=config.n_moments)
     elif config.loss_sim == 'cosine':
         loss_function_sim = CosineLoss()
+    elif config.loss_sim == 'l2':
+        loss_function_sim = L2Loss()
+    elif config.loss_sim == 'mse':
+        loss_function_sim = nn.MSELoss(reduction='mean')
     else:
         raise ValueError
 

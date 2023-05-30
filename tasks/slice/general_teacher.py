@@ -316,12 +316,12 @@ class GeneralTeacher(object):
         loss_recon = loss_recon_mri + loss_recon_pet
 
         # classification
-        logit = self.networks['classifier']((z_mri_general + z_pet_general) / 2)
+        logit = self.networks['classifier']((z_mri_general + z_pet_general))
 
         loss_ce = self.loss_function_ce(logit, y)
         loss_ce = loss_ce / ((y != -1).sum() + 1e-6)
 
-        loss = loss_ce + \
+        loss = self.config.alpha_ce * loss_ce + \
                self.config.alpha_sim * loss_sim + \
                self.config.alpha_diff * loss_diff + \
                self.config.alpha_recon * loss_recon

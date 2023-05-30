@@ -30,6 +30,7 @@ WARMUP=-1
 LOSS_SIM="cosine"
 LOSS_DIFF="mse"
 
+ALPHA_CE=1.0
 ALPHA_SIM=1.0
 ALPHA_DIFF=2.0
 ALPHA_RECON=0.5
@@ -94,6 +95,7 @@ do
           --cosine_warmup $COSINE_WARMUP \
           --balance $BALANCE \
           --sampler_type $SAMPLER_TYPE \
+          --alpha_ce $ALPHA_CE \
           --alpha_sim $ALPHA_SIM \
           --alpha_diff $ALPHA_DIFF \
           --alpha_recon $ALPHA_RECON \
