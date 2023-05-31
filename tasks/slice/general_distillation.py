@@ -91,7 +91,16 @@ class GeneralDistillation(object):
         params = []
         for name in self.networks.keys():
             if name.endswith('_s'):
-                params = params + [{'params': self.networks[name].parameters(), 'lr': self.config.learning_rate}]
+                if self.config.different_lr:
+                    if name.startswith('encoder_') or name.startswith('decoder_'):
+                        params = params + [{'params': self.networks[name].parameters(),
+                                            'lr': self.config.learning_rate / 10}]
+                    else:
+                        params = params + [{'params': self.networks[name].parameters(),
+                                            'lr': self.config.learning_rate}]
+                else:
+                    params = params + [{'params': self.networks[name].parameters(),
+                                        'lr': self.config.learning_rate}]
 
         self.optimizer = get_optimizer(params=params, name=config.optimizer,
                                        lr=config.learning_rate, weight_decay=config.weight_decay)
@@ -321,14 +330,13 @@ class GeneralDistillation(object):
         loss_recon_s = self.loss_function_recon(h_mri_recon_s, h_mri_s)
 
         # 3. Student Classification
-        # TODO: z_pet_general is missing in the student model. should z_mri_s be included?
-        logit_s = self.networks['classifier_s'](z_mri_general_s)
+        logit_s = self.networks['classifier_s'](z_mri_general_s * 2)
 
         # 4. Knowledge Distillation
         loss_kd_clf = F.kl_div(F.log_softmax(logit_s / self.config.temperature, dim=1),
                                F.softmax(logit / self.config.temperature, dim=1),
                                reduction='none')
-        # TODO: conduct KD on unlabeled data? like semi-supervised learning
+        # TODO: conduct KD on unlabeled data? like semi-supervised learning. Are they assigned to conv/non-conv?
         loss_kd_clf = (loss_kd_clf[y != -1]).sum() / ((y != -1).sum() + 1e-6)
 
         # B. Incomplete Training. Some of them are unlabeled.
@@ -348,7 +356,7 @@ class GeneralDistillation(object):
         loss_recon_in = self.loss_function_recon(h_mri_recon_in, h_mri_in)
 
         # classification
-        logit_in = self.networks['classifier_s'](z_mri_general_in)
+        logit_in = self.networks['classifier_s'](z_mri_general_in * 2)
 
         # C. Loss Aggregation
         logit_total = torch.concat([logit_s, logit_in])
@@ -360,7 +368,7 @@ class GeneralDistillation(object):
         # when batch size of two loaders are equal
         loss_recon = (loss_recon_s + loss_recon_in) / 2
 
-        loss = loss_ce + \
+        loss = self.config.alpha_ce * loss_ce + \
                self.config.alpha_recon * loss_recon + \
                self.config.alpha_kd_clf * loss_kd_clf
 

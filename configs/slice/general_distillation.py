@@ -49,10 +49,12 @@ class SliceGeneralDistillation(ConfigBase):
     def task_specific_parser() -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser('General Teacher', add_help=False)
         parser.add_argument('--balance', type=str2bool, help='apply class balance weight')
-        parser.add_argument('--sampler_type', type=str, default=None, choices=('over', 'stratified'))
+        parser.add_argument('--sampler_type', type=str, default='stratified', choices=('over', 'stratified'))
+        parser.add_argument('--different_lr', type=str2bool, help='apply class balance weight')
 
         # Weight Alpha
-        parser.add_argument('--alpha_recon', type=float, default=1.0)
+        parser.add_argument('--alpha_ce', type=float, default=1.0)
+        parser.add_argument('--alpha_recon', type=float, default=0.5)
         parser.add_argument('--alpha_kd_clf', type=float, default=0.5)
 
         # Knowledge Distillation
