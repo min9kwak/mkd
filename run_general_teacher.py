@@ -125,7 +125,7 @@ def main_worker(local_rank: int, config: argparse.Namespace):
     if config.enable_wandb:
         wandb.init(
             name=f'{config.task} : {config.hash}',
-            project='incomplete-kd',
+            project='incomplete-kd-teacher',
             config=config.__dict__,
             settings=wandb.Settings(code_dir=".")
         )
