@@ -17,7 +17,8 @@ from datasets.brain import BrainProcessor, BrainMulti
 from datasets.slice.transforms import make_mri_transforms, make_pet_transforms
 from models.slice.build import build_networks_general_teacher
 
-from utils.loss import DiffLoss, CMDLoss, CosineLoss, L2Loss
+from utils.loss import SimCosineLoss, SimCMDLoss, SimL2Loss
+from utils.loss import DiffCosineLoss, DiffFroLoss, DiffMSELoss
 from utils.logging import get_rich_logger
 from utils.gpu import set_gpu
 
@@ -142,22 +143,25 @@ def main_worker(local_rank: int, config: argparse.Namespace):
 
     # Similarity, Difference, and Reconstruction
     if config.loss_sim == 'cmd':
-        loss_function_sim = CMDLoss(n_moments=config.n_moments)
+        loss_function_sim = SimCMDLoss(n_moments=config.n_moments)
     elif config.loss_sim == 'cosine':
-        loss_function_sim = CosineLoss()
+        loss_function_sim = SimCosineLoss()
     elif config.loss_sim == 'l2':
-        loss_function_sim = L2Loss()
+        loss_function_sim = SimL2Loss()
     elif config.loss_sim == 'mse':
         loss_function_sim = nn.MSELoss(reduction='mean')
     else:
         raise ValueError
 
-    if config.loss_diff == 'diff':
-        loss_function_diff = DiffLoss()
+    if config.loss_diff == 'cosine':
+        loss_function_diff = DiffCosineLoss()
+    elif config.loss_diff == 'fro':
+        loss_function_diff = DiffFroLoss()
     elif config.loss_diff == 'mse':
-        loss_function_diff = nn.MSELoss(reduction='mean')
+        loss_function_diff = DiffMSELoss()
     else:
         raise ValueError
+
     loss_function_recon = nn.MSELoss(reduction='mean')
 
     # Model (Task)
