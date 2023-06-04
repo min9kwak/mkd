@@ -18,7 +18,7 @@ from datasets.slice.transforms import make_mri_transforms, make_pet_transforms
 from models.slice.build import build_networks_general_teacher
 
 from utils.loss import SimCosineLoss, SimCMDLoss, SimL2Loss
-from utils.loss import DiffCosineLoss, DiffFroLoss, DiffMSELoss
+from utils.loss import DiffCosineLoss, DiffFrobeniusLoss, DiffMSELoss
 from utils.logging import get_rich_logger
 from utils.gpu import set_gpu
 
@@ -156,7 +156,7 @@ def main_worker(local_rank: int, config: argparse.Namespace):
     if config.loss_diff == 'cosine':
         loss_function_diff = DiffCosineLoss()
     elif config.loss_diff == 'fro':
-        loss_function_diff = DiffFroLoss()
+        loss_function_diff = DiffFrobeniusLoss()
     elif config.loss_diff == 'mse':
         loss_function_diff = DiffMSELoss()
     else:

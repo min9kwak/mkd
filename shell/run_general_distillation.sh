@@ -1,10 +1,10 @@
 echo "Experiments Started"
-SERVER=main
+SERVER=workstation3
 GPUS=0
 
 EPOCHS=10
 LEARNING_RATE=0.0001
-COSINE_WARMUP=-1
+COSINE_WARMUP=0
 
 BALANCE=True
 SAMPLER_TYPE=stratified
@@ -14,23 +14,23 @@ TEMPERATURE=1.0
 
 ALPHA_CE=1.0
 ALPHA_RECON=0.5
-ALPHA_KD_CLF=1.0
+ALPHA_KD_CLF=10.0
 
 TEACHER_PRE="checkpoints/GeneralTeacher-FBP/"
 HASH="2023-05-31_02-42-45"
 TEACHER_POSITION=last
 USE_TEACHER=True
 
-# "2023-05-31_02-42-45" "2023-05-30_13-52-45"
-for HASH in "2023-05-31_02-42-45"
+# "2023-06-03_15-08-06" "2023-06-03_04-19-11" "2023-06-03_04-18-56" "2023-06-02_13-39-06"
+for HASH in "2023-06-03_15-08-06" "2023-06-03_04-19-11" "2023-06-03_04-18-56" "2023-06-02_13-39-06"
 do
-  for LEARNING_RATE in 0.0001
+  for LEARNING_RATE in 0.001
   do
-    for EPOCHS in 10
+    for EPOCHS in 100
     do
-      for ALPHA_KD_CLF in 1.0
+      for ALPHA_KD_CLF in 10.0
       do
-        for TEMPERATURE in 1.0 3.0
+        for TEMPERATURE in 3.0 5.0
         do
           TEACHER_DIR="${TEACHER_PRE}${HASH}"
           python ./run_general_distillation.py \

@@ -18,7 +18,8 @@ from datasets.brain import BrainProcessor, BrainMulti, BrainMRI
 from datasets.slice.transforms import make_mri_transforms, make_pet_transforms
 from models.slice.build import build_networks_general_teacher
 
-from utils.loss import DiffLoss, CMDLoss
+from utils.loss import SimCosineLoss, SimCMDLoss, SimL2Loss
+from utils.loss import DiffCosineLoss, DiffFrobeniusLoss, DiffMSELoss
 from utils.logging import get_rich_logger
 from utils.gpu import set_gpu
 

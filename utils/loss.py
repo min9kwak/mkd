@@ -3,10 +3,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-class DiffFroLoss(nn.Module):
+class DiffFrobeniusLoss(nn.Module):
 
     def __init__(self):
-        super(DiffFroLoss, self).__init__()
+        super(DiffFrobeniusLoss, self).__init__()
 
     def forward(self, input1, input2):
         batch_size = input1.size(0)
@@ -31,8 +31,8 @@ class SimCosineLoss(nn.Module):
 
     def forward(self, x1: torch.Tensor, x2: torch.Tensor):
         # x1 and x2 are L2-normalized
-        loss = torch.einsum('nc,nc->n', [x1, x2])
-        loss = 1 - loss
+        cos = torch.einsum('nc,nc->n', [x1, x2])
+        loss = 1 - cos
         return loss.mean()
 
 
@@ -42,8 +42,8 @@ class DiffCosineLoss(nn.Module):
 
     def forward(self, x1: torch.Tensor, x2: torch.Tensor):
         # x1 and x2 are L2-normalized
-        loss = torch.einsum('nc,nc->n', [x1, x2])
-        loss = 1 + loss
+        cos = torch.einsum('nc,nc->n', [x1, x2])
+        loss = 1 + cos
         return loss.mean()
 
 
@@ -63,8 +63,8 @@ class DiffMSELoss(nn.Module):
 
     def forward(self, x1: torch.Tensor, x2: torch.Tensor):
         # x1 and x2 are L2-normalized
-        loss = F.mse_loss(x1, x2, reduction='mean')
-        return -loss
+        mse = F.mse_loss(x1, x2, reduction='mean')
+        return -mse
 
 
 class SimCMDLoss(nn.Module):
@@ -91,3 +91,43 @@ class SimCMDLoss(nn.Module):
         ss1 = torch.mean(torch.pow(sx1, k), 0)
         ss2 = torch.mean(torch.pow(sx2, k), 0)
         return self.matchnorm(ss1, ss2)
+
+
+if __name__ == '__main__':
+
+    import torch
+    import torch.nn as nn
+
+    class OrthogonalityLoss(nn.Module):
+        def __init__(self):
+            super(OrthogonalityLoss, self).__init__()
+
+        def forward(self, u, v):
+            # Compute the dot product along the last dimension, then square it
+            loss = (u * v).sum(dim=-1) ** 2
+            # Return the average loss over the batch
+            return loss
+
+    # Test with random tensors
+    loss_fn = OrthogonalityLoss()
+
+    u = torch.tensor([[0.0, 2.0],
+                      [0.0, 2.0],
+                      [0.0, 2.0],
+                      [0.0, 2.0],
+                      [0.0, 2.0],
+                      [0.0, 2.0],
+                      [0.0, 2.0]])
+
+    v = torch.tensor([[0.0, 2.0],   # identical
+                      [0.5, 2.0],   # similar
+                      [1.0, 2.0],   # less similar
+                      [2.0, 0.0],   # orthogonal
+                      [-2.0, 0.0],  # orthogonal
+                      [-1.0, -1.0], # negative dissimilar
+                      [0.0, -2.0]]) # opposite
+
+    u = nn.functional.normalize(u, p=2, dim=1)
+    v = nn.functional.normalize(v, p=2, dim=1)
+
+    loss = loss_fn(u, v)
