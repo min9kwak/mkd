@@ -21,12 +21,14 @@ class GeneralDistillation(object):
         # Teacher
         'extractor_mri', 'extractor_pet',
         'projector_mri', 'projector_pet',
-        'encoder_general',
+        'encoder_general', 'encoder_mri', 'encoder_pet',
+        'decoder_mri', 'decoder_pet',
         'classifier',
 
         # Student
         'extractor_mri_s', 'projector_mri_s',
-        'encoder_general_s'
+        'encoder_general_s', 'encoder_mri_s',
+        'decoder_mri_s',
         'classifier_s'
     ]
 
@@ -45,6 +47,7 @@ class GeneralDistillation(object):
     def prepare(self,
                 config: argparse.Namespace,
                 loss_function_ce,
+                loss_function_recon,
                 local_rank: int = 0,
                 **kwargs):
 
@@ -53,6 +56,7 @@ class GeneralDistillation(object):
 
         # CE / CMD / DIFF / MSE / KD (clf)
         self.loss_function_ce = loss_function_ce
+        self.loss_function_recon = loss_function_recon
 
         self.checkpoint_dir = config.checkpoint_dir
         self.epochs = config.epochs
@@ -242,7 +246,7 @@ class GeneralDistillation(object):
         steps = min(len(data_loader), len(data_mri_loader))
         result = {'total_loss': torch.zeros(steps, device=self.local_rank),
                   'loss_ce': torch.zeros(steps, device=self.local_rank),
-                  'loss_kd_repr': torch.zeros(steps, device=self.local_rank),
+                  'loss_recon_s': torch.zeros(steps, device=self.local_rank),
                   'loss_kd_clf': torch.zeros(steps, device=self.local_rank),}
 
         with get_rich_pbar(transient=True, auto_refresh=False) as pg:
@@ -253,13 +257,13 @@ class GeneralDistillation(object):
             y_true, y_pred = [], []
             for i, (batch, batch_mri) in enumerate(zip(data_loader, data_mri_loader)):
                 with torch.cuda.amp.autocast(self.mixed_precision):
-                    loss, loss_ce, loss_kd_repr, loss_kd_clf, y, logit_s = self.train_step(batch, batch_mri)
+                    loss, loss_ce, loss_recon_s, loss_kd_clf, y, logit_s = self.train_step(batch, batch_mri)
                 self.update(loss)
 
                 # save monitoring values
                 result['total_loss'][i] = loss.detach()
                 result['loss_ce'][i] = loss_ce.detach()
-                result['loss_kd_repr'][i] = loss_kd_repr.detach()
+                result['loss_recon_s'][i] = loss_recon_s.detach()
                 result['loss_kd_clf'][i] = loss_kd_clf.detach()
 
                 if self.local_rank == 0:
@@ -316,20 +320,26 @@ class GeneralDistillation(object):
 
         # 2. Student
         h_mri_s = self.networks['projector_mri_s'](self.networks['extractor_mri_s'](x_mri))
+
         z_mri_general_s = self.networks['encoder_general_s'](h_mri_s)
+        z_mri_s = self.networks['encoder_mri_s'](h_mri_s)
+
+        # reconstruction
+        h_mri_recon_s = self.networks['decoder_mri_s'](z_mri_general_s + z_mri_s)
+
+        loss_recon_s = self.loss_function_recon(h_mri_recon_s, h_mri_s)
+
+        # 3. Student Classification
         logit_s = self.networks['classifier_s'](z_mri_general_s * 2)
 
         # 4. Knowledge Distillation
-        # general representation
-        cos = torch.einsum('nc,nc->n', [z_mri_general, z_mri_general_s])
-        loss_kd_repr = (1 - cos) / (2 * self.config.temperature ** 2)
-        loss_kd_repr = loss_kd_repr.mean()
-
-        # classification
         loss_kd_clf = F.kl_div(F.log_softmax(logit_s / self.config.temperature, dim=1),
                                F.softmax(logit / self.config.temperature, dim=1),
                                reduction='none')
+        # TODO: conduct KD on unlabeled data? like semi-supervised learning. Are they assigned to conv/non-conv?
         loss_kd_clf = (loss_kd_clf[y != -1]).sum() / ((y != -1).sum() + 1e-6)
+
+        # TODO: kd_geeneral_representation, loss_diff
 
         # B. Incomplete Training. Some of them are unlabeled.
         # input data
@@ -338,7 +348,16 @@ class GeneralDistillation(object):
 
         # 1. Student
         h_mri_in = self.networks['projector_mri_s'](self.networks['extractor_mri_s'](x_mri_in))
+
         z_mri_general_in = self.networks['encoder_general_s'](h_mri_in)
+        z_mri_in = self.networks['encoder_mri_s'](h_mri_in)
+
+        # reconstruction
+        h_mri_recon_in = self.networks['decoder_mri_s'](z_mri_general_in + z_mri_in)
+
+        loss_recon_in = self.loss_function_recon(h_mri_recon_in, h_mri_in)
+
+        # classification
         logit_in = self.networks['classifier_s'](z_mri_general_in * 2)
 
         # C. Loss Aggregation
@@ -348,11 +367,14 @@ class GeneralDistillation(object):
         loss_ce = self.loss_function_ce(logit_total, y_total)
         loss_ce = loss_ce / ((y != -1).sum() + (y_in != -1).sum() + 1e-6)
 
+        # when batch size of two loaders are equal
+        loss_recon = (loss_recon_s + loss_recon_in) / 2
+
         loss = self.config.alpha_ce * loss_ce + \
-               self.config.alpha_kd_repr * loss_kd_repr + \
+               self.config.alpha_recon * loss_recon + \
                self.config.alpha_kd_clf * loss_kd_clf
 
-        return loss, loss_ce, loss_kd_repr, loss_kd_clf, y_total, logit_total
+        return loss, loss_ce, loss_recon, loss_kd_clf, y_total, logit_total
 
     @torch.no_grad()
     def evaluate(self, data_loader, adjusted=False):
@@ -362,7 +384,7 @@ class GeneralDistillation(object):
         steps = len(data_loader)
         result = {'total_loss': torch.zeros(steps, device=self.local_rank),
                   'loss_ce': torch.zeros(steps, device=self.local_rank),
-                  'loss_kd_repr': torch.zeros(steps, device=self.local_rank),
+                  'loss_recon_s': torch.zeros(steps, device=self.local_rank),
                   'loss_kd_clf': torch.zeros(steps, device=self.local_rank),}
 
         # 1. Training Teacher Model
@@ -373,12 +395,12 @@ class GeneralDistillation(object):
             y_true, y_pred = [], []
             for i, batch in enumerate(data_loader):
                 with torch.cuda.amp.autocast(False):
-                    loss, loss_ce, loss_kd_repr, loss_kd_clf, y, logit_s = self.train_step(batch, batch)
+                    loss, loss_ce, loss_recon_s, loss_kd_clf, y, logit_s = self.train_step(batch, batch)
 
                 # save monitoring values
                 result['total_loss'][i] = loss.detach()
                 result['loss_ce'][i] = loss_ce.detach()
-                result['loss_kd_repr'][i] = loss_kd_repr.detach()
+                result['loss_recon_s'][i] = loss_recon_s.detach()
                 result['loss_kd_clf'][i] = loss_kd_clf.detach()
 
                 if self.local_rank == 0:

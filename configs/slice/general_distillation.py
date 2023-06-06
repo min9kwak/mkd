@@ -54,7 +54,7 @@ class SliceGeneralDistillation(ConfigBase):
 
         # Weight Alpha
         parser.add_argument('--alpha_ce', type=float, default=1.0)
-        parser.add_argument('--alpha_recon', type=float, default=0.5)
+        parser.add_argument('--alpha_kd_repr', type=float, default=0.5)
         parser.add_argument('--alpha_kd_clf', type=float, default=0.5)
 
         # Knowledge Distillation

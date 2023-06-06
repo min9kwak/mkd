@@ -143,11 +143,17 @@ def main_worker(local_rank: int, config: argparse.Namespace):
     # Networks
     networks = build_networks_general_teacher(config=config)
 
+    # teacher_network_names = ['extractor_mri', 'extractor_pet', 'projector_mri', 'projector_pet',
+    #                          'encoder_general', 'encoder_mri', 'encoder_pet', 'decoder_mri', 'decoder_pet',
+    #                          'classifier']
+    # student_network_names = ['extractor_mri', 'projector_mri',
+    #                          'encoder_general', 'encoder_mri', 'decoder_mri', 'transformer_encoder',
+    #                          'classifier']
+
     teacher_network_names = ['extractor_mri', 'extractor_pet', 'projector_mri', 'projector_pet',
-                             'encoder_general', 'encoder_mri', 'encoder_pet', 'decoder_mri', 'decoder_pet',
-                             'classifier']
+                             'encoder_general', 'classifier']
     student_network_names = ['extractor_mri', 'projector_mri',
-                             'encoder_general', 'encoder_mri', 'decoder_mri', 'transformer_encoder',
+                             'encoder_general',
                              'classifier']
 
     networks = {k: v for k, v in networks.items() if k in teacher_network_names and v is not None}
@@ -183,14 +189,10 @@ def main_worker(local_rank: int, config: argparse.Namespace):
         class_weight = torch.tensor(processor.class_weight_pet, dtype=torch.float).to(local_rank)
     loss_function_ce = nn.CrossEntropyLoss(weight=class_weight, reduction='sum', ignore_index=-1)
 
-    # Reconstruction
-    loss_function_recon = nn.MSELoss(reduction='mean')
-
     # Model (Task)
     model = GeneralDistillation(networks=networks)
     model.prepare(config=config,
                   loss_function_ce=loss_function_ce,
-                  loss_function_recon=loss_function_recon,
                   local_rank=local_rank)
 
     # Train & evaluate
