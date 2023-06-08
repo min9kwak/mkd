@@ -46,6 +46,7 @@ ADD_TYPE=add
 
 BALANCE=True
 SAMPLER_TYPE=stratified
+DIFFERENT_LR=True
 
 for RANDOM_STATE in 2021
 do
@@ -95,6 +96,7 @@ do
           --cosine_warmup $COSINE_WARMUP \
           --balance $BALANCE \
           --sampler_type $SAMPLER_TYPE \
+          --different_lr $DIFFERENT_LR \
           --alpha_ce $ALPHA_CE \
           --alpha_sim $ALPHA_SIM \
           --alpha_diff $ALPHA_DIFF \

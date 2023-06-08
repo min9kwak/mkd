@@ -1,5 +1,5 @@
 import argparse
-from configs.base import ConfigBase
+from configs.base import ConfigBase, str2bool
 
 
 class SliceSingleConfig(ConfigBase):
@@ -13,31 +13,39 @@ class SliceSingleConfig(ConfigBase):
 
         parser = argparse.ArgumentParser("Data", add_help=False)
         parser.add_argument('--data_file', type=str, default='labels/data_info_multi.csv')
-        parser.add_argument('--data_type', type=str, choices=('mri', 'pet'))
+        parser.add_argument('--data_type', type=str, default='mri', choices=('mri', 'pet'))
         parser.add_argument('--pet_type', type=str, choices=('FDG', 'FBP'), default='FBP')
-        parser.add_argument('--mci_only', action='store_true')
+        parser.add_argument('--mci_only', type=str2bool, default=True)
+        parser.add_argument('--use_unlabeled', type=str2bool, default=True)
 
         parser.add_argument('--random_state', type=int, default=2023)
         parser.add_argument('--validation_size', type=float, default=0.1)
         parser.add_argument('--test_size', type=float, default=0.1)
         parser.add_argument('--missing_rate', type=float)
 
-        # augmentation
-        parser.add_argument('--mri_type', type=str, choices=('individual', 'template'))
-        parser.add_argument('--image_size', type=int, default=72)
-        parser.add_argument('--intensity', type=str, choices=('scale', 'normalize', 'simple'))
-        parser.add_argument('--crop_size', type=int)
-        parser.add_argument('--rotate', action='store_true')
-        parser.add_argument('--flip', action='store_true')
-        parser.add_argument('--affine', action='store_true')
-        parser.add_argument('--blur_std', type=float)
+        # MRI augmentation
+        parser.add_argument('--mri_type', type=str, default='template', choices=('individual', 'template'))
+        parser.add_argument('--image_size_mri', type=int, default=72)
+        parser.add_argument('--intensity_mri', type=str, default='scale', choices=('scale', 'normalize', 'simple'))
+        parser.add_argument('--crop_size_mri', type=int, default=64)
+        parser.add_argument('--rotate_mri', type=str2bool, default=True)
+        parser.add_argument('--flip_mri', type=str2bool, default=True)
+        parser.add_argument('--affine_mri', type=str2bool, default=False)
+        parser.add_argument('--blur_std_mri', type=float)
+
         parser.add_argument('--prob', type=float, default=0.5)
 
         # slice
-        parser.add_argument('--train_slices', type=str, default='random',
+        parser.add_argument('--train_slices', type=str, default='fixed',
                             choices=('random', 'fixed', 'sagittal', 'coronal', 'axial'))
+
+        # random
         parser.add_argument('--num_slices', type=int, default=5)
         parser.add_argument('--slice_range', type=float, default=0.15)
+
+        # fixed
+        parser.add_argument('--space', type=int, default=3)
+        parser.add_argument('--n_points', type=int, default=5)
 
         return parser
 
@@ -48,8 +56,27 @@ class SliceSingleConfig(ConfigBase):
         parser.add_argument('--resume', type=str, default=None, help='Path to checkpoint file to resume training from.')
 
         # Network Type
-        parser.add_argument('--encoder_type', type=str, default='resnet50')
-        parser.add_argument('--small_kernel', action='store_true')
+        parser.add_argument('--extractor_type', type=str, default='resnet50')
+        parser.add_argument('--small_kernel', type=str2bool, default=True)
+
+        # Projector, Encoder, and Decoder
+        parser.add_argument('--hidden', type=int, default=128)
+        parser.add_argument('--swap', type=str2bool, default=False)
+        parser.add_argument('--encoder_act', type=str, default='sigmoid', choices=('relu', 'lrelu', 'sigmoid'))
+        parser.add_argument('--encoder_type', type=str, default='mlp', choices=('linear', 'mlp'))
+
+        # Classifier
+        parser.add_argument('--mlp', type=str2bool, default=False) # classifier_type - linear, mlp, transformer
+        parser.add_argument('--dropout', type=float, default=0.0)
+
+        # Optional
+        parser.add_argument('--use_projector', type=str2bool, default=True)
+        parser.add_argument('--use_specific', type=str2bool, default=False)
+        parser.add_argument('--use_transformer', type=str2bool, default=False)
+        parser.add_argument('--ce_only', type=str2bool, default=False)
+        parser.add_argument('--add_type', type=str, default='add', choices=('concat', 'add'))
+        parser.add_argument('--warmup', type=int, default=-1)
+
         return parser
 
     @staticmethod
@@ -57,13 +84,13 @@ class SliceSingleConfig(ConfigBase):
         """Returns an `argparse.ArgumentParser` instance containing training-related arguments."""
         parser = argparse.ArgumentParser("Model Training", add_help=False)
         parser.add_argument('--epochs', type=int, default=100, help='Number of training epochs.')
-        parser.add_argument('--batch_size', type=int, default=4, help='Mini-batch size.')
+        parser.add_argument('--batch_size', type=int, default=16, help='Mini-batch size.')
         parser.add_argument('--num_workers', type=int, default=4, help='Number of CPU threads.')
 
         parser.add_argument('--optimizer', type=str, default='sgd', choices=('sgd', 'adamw'),
                             help='Optimization algorithm.')
         parser.add_argument('--learning_rate', type=float, default=0.001, help='Base learning rate to start from.')
-        parser.add_argument('--weight_decay', type=float, default=1e-4, help='Weight decay factor.')
+        parser.add_argument('--weight_decay', type=float, default=0.0001, help='Weight decay factor.')
 
         parser.add_argument('--cosine_warmup', type=int, default=0,
                             help='Number of warmups before cosine LR scheduling (-1 to disable.)')
@@ -71,12 +98,14 @@ class SliceSingleConfig(ConfigBase):
                             help='Number of hard cosine LR cycles with hard restarts.')
         parser.add_argument('--cosine_min_lr', type=float, default=0.0,
                             help='LR lower bound when cosine scheduling is used.')
-        parser.add_argument('--mixed_precision', action='store_true', help='Use float16 precision.')
+        parser.add_argument('--mixed_precision', type=str2bool, default=True, help='Use float16 precision.')
         return parser
 
     @staticmethod
     def task_specific_parser() -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser('Single', add_help=False)
-        parser.add_argument('--balance', action='store_true', help='apply class balance weight')
+        parser.add_argument('--balance', type=str2bool, default=True, help='apply class balance weight')
+        parser.add_argument('--sampler_type', type=str, default=None, choices=('over', 'stratified'))
+        parser.add_argument('--different_lr', type=str2bool, help='apply class balance weight')
 
         return parser

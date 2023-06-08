@@ -117,6 +117,7 @@ class SliceGeneralTeacher(ConfigBase):
         parser = argparse.ArgumentParser('General Teacher', add_help=False)
         parser.add_argument('--balance', type=str2bool, default=True, help='apply class balance weight')
         parser.add_argument('--sampler_type', type=str, default=None, choices=('over', 'stratified'))
+        parser.add_argument('--different_lr', type=str2bool, help='apply class balance weight')
 
         # Weight Alpha
         parser.add_argument('--alpha_ce', type=float, default=1.0)

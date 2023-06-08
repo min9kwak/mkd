@@ -2,7 +2,7 @@ echo "Experiments Started"
 SERVER=workstation3
 GPUS=0
 
-EPOCHS=10
+EPOCHS=30
 LEARNING_RATE=0.0001
 COSINE_WARMUP=0
 
@@ -13,8 +13,8 @@ DIFFERENT_LR=True
 TEMPERATURE=1.0
 
 ALPHA_CE=1.0
-ALPHA_RECON=0.5
 ALPHA_KD_CLF=10.0
+ALPHA_KD_REPR=0.5
 
 TEACHER_PRE="checkpoints/GeneralTeacher-FBP/"
 HASH="2023-05-31_02-42-45"
@@ -24,7 +24,7 @@ USE_TEACHER=True
 # "2023-06-03_15-08-06" "2023-06-03_04-19-11" "2023-06-03_04-18-56" "2023-06-02_13-39-06"
 for HASH in "2023-06-03_15-08-06" "2023-06-03_04-19-11" "2023-06-03_04-18-56" "2023-06-02_13-39-06"
 do
-  for LEARNING_RATE in 0.001
+  for LEARNING_RATE in 0.0001
   do
     for EPOCHS in 100
     do
@@ -45,8 +45,8 @@ do
           --balance $BALANCE \
           --sampler_type $SAMPLER_TYPE \
           --alpha_ce $ALPHA_CE \
-          --alpha_recon $ALPHA_RECON \
           --alpha_kd_clf $ALPHA_KD_CLF \
+          --alpha_kd_repr $ALPHA_KD_REPR \
           --different_lr $DIFFERENT_LR \
           --temperature $TEMPERATURE \
           --teacher_dir $TEACHER_DIR \

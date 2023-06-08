@@ -6,7 +6,6 @@ import time
 import rich
 import numpy as np
 import wandb
-from copy import deepcopy
 
 import torch
 import torch.nn as nn
@@ -14,14 +13,12 @@ import torch.nn as nn
 from configs.slice.single import SliceSingleConfig
 from tasks.slice.single import Single
 
-from datasets.brain import BrainProcessor, BrainMRI
-from datasets.slice.transforms import make_mri_transforms
-from models.slice.build import build_networks_general_teacher
+from datasets.brain import BrainProcessor, BrainMRI, BrainPET
+from datasets.slice.transforms import make_mri_transforms, make_pet_transforms
+from models.slice.build import build_networks_single
 
 from utils.logging import get_rich_logger
 from utils.gpu import set_gpu
-
-import argparse
 
 
 def main():
@@ -56,7 +53,7 @@ def main():
         main_worker(0, config=config)  # single machine, single gpu
 
 
-def main_worker(local_rank: int, config: argparse.Namespace):
+def main_worker(local_rank: int, config: object):
     """Single process."""
 
     torch.cuda.set_device(local_rank)
@@ -70,24 +67,29 @@ def main_worker(local_rank: int, config: argparse.Namespace):
     if config.train_slices == 'random':
         pass
     elif config.train_slices == 'fixed':
-        num_slices = 3 * (2 * config.n_points + 1)
-        setattr(config, 'num_slices', num_slices)
+        # TODO: change
+        setattr(config, 'num_slices', 3)
     elif config.train_slices in ['sagittal', 'coronal', 'axial']:
         setattr(config, 'num_slices', 1)
     else:
         raise ValueError
 
-    assert config.data_type == 'mri'
-    train_transform, test_transform = make_mri_transforms(
-        image_size_mri=config.image_size_mri, intensity_mri=config.intensity_mri, crop_size_mri=config.crop_size_mri,
-        rotate_mri=config.rotate_mri, flip_mri=config.flip_mri, affine_mri=config.affine_mri,
-        blur_std_mri=config.blur_std_mri, train_slices=config.train_slices, num_slices=config.num_slices,
-        slice_range=config.slice_range, space=config.space, n_points=config.n_points, prob=config.prob)
+    if config.data_type == 'mri':
+        train_transform, test_transform = make_mri_transforms(
+            image_size_mri=config.image_size, intensity_mri=config.intensity, crop_size_mri=config.crop_size,
+            rotate_mri=config.rotate, flip_mri=config.flip, affine_mri=config.affine, blur_std_mri=config.blur_std,
+            train_slices=config.train_slices, num_slices=config.num_slices, slice_range=config.slice_range,
+            prob=config.prob)
+    elif config.data_type == 'pet':
+        train_transform, test_transform = make_pet_transforms(
+            image_size_pet=config.image_size, intensity_pet=config.intensity, crop_size_pet=config.crop_size,
+            rotate_pet=config.rotate, flip_pet=config.flip, affine_pet=config.affine, blur_std_pet=config.blur_std,
+            train_slices=config.train_slices, num_slices=config.num_slices, slice_range=config.slice_range,
+            prob=config.prob)
+    else:
+        raise ValueError('data_type must be either mri or pet')
 
     # Dataset
-    if config.missing_rate == -1.0:
-        setattr(config, 'missing_rate', None)
-
     processor = BrainProcessor(root=config.root,
                                data_file=config.data_file,
                                mri_type=config.mri_type,
@@ -99,19 +101,30 @@ def main_worker(local_rank: int, config: argparse.Namespace):
                                       missing_rate=config.missing_rate)
     setattr(config, 'current_missing_rate', processor.current_missing_rate)
 
-    train_set = BrainMRI(dataset=datasets_dict['mri_total_train'], mri_transform=train_transform)
-    validation_set = BrainMRI(dataset=datasets_dict['mri_pet_complete_validation'], mri_transform=test_transform)
-    test_set = BrainMRI(dataset=datasets_dict['mri_pet_complete_test'], mri_transform=test_transform)
+    if config.data_type == 'mri':
+        train_set = BrainMRI(dataset=datasets_dict['mri_total_train'], mri_transform=train_transform)
+        validation_set = BrainMRI(dataset=datasets_dict['mri_pet_complete_validation'], mri_transform=test_transform)
+        test_set = BrainMRI(dataset=datasets_dict['mri_pet_complete_test'], mri_transform=test_transform)
+    elif config.data_type == 'pet':
+        train_set = BrainPET(dataset=datasets_dict['mri_pet_complete_train'], pet_transform=train_transform)
+        validation_set = BrainPET(dataset=datasets_dict['mri_pet_complete_validation'], pet_transform=test_transform)
+        test_set = BrainPET(dataset=datasets_dict['mri_pet_complete_test'], pet_transform=test_transform)
+    else:
+        raise ValueError('data_type must be either mri or pet')
 
-    datasets = {'train_mri': train_set, 'validation': validation_set, 'test': test_set}
+    datasets = {'train': train_set, 'validation': validation_set, 'test': test_set}
 
     # Networks
-    networks_ = build_networks_general_teacher(config=config)
-    networks = {'extractor': deepcopy(networks_['extractor_mri']),
-                'projector': deepcopy(networks_['projector_mri']),
-                'encoder': deepcopy(networks_['encoder_mri']),
-                'classifier': deepcopy(networks_['classifier'])}
-    del networks_
+    networks = build_networks_single(config=config)
+
+    # Cross Entropy Loss Function
+    class_weight = None
+    if config.balance:
+        if config.data_type == 'mri':
+            class_weight = torch.tensor(processor.class_weight_mri, dtype=torch.float).to(local_rank)
+        else:
+            class_weight = torch.tensor(processor.class_weight_pet, dtype=torch.float).to(local_rank)
+    loss_function_ce = nn.CrossEntropyLoss(weight=class_weight, reduction='mean')
 
     # Logging
     logfile = os.path.join(config.checkpoint_dir, 'main.log')
@@ -119,7 +132,7 @@ def main_worker(local_rank: int, config: argparse.Namespace):
     if config.enable_wandb:
         wandb.init(
             name=f'{config.task} : {config.hash}',
-            project='incomplete-kd-mri',
+            project='incomplete-kd',
             config=config.__dict__,
             settings=wandb.Settings(code_dir=".")
         )
@@ -127,17 +140,26 @@ def main_worker(local_rank: int, config: argparse.Namespace):
         rich.print(config.__dict__)
         config.save()
 
-    # Cross Entropy Loss Function
-    class_weight = None
-    if config.balance:
-        class_weight = torch.tensor(processor.class_weight_mri, dtype=torch.float).to(local_rank)
-    loss_function_ce = nn.CrossEntropyLoss(weight=class_weight, reduction='sum', ignore_index=-1)
-
     # Model (Task)
     model = Single(networks=networks, data_type=config.data_type)
-    model.prepare(config=config,
-                  loss_function_ce=loss_function_ce,
-                  local_rank=local_rank)
+    model.prepare(
+        checkpoint_dir=config.checkpoint_dir,
+        loss_function_ce=loss_function_ce,
+        optimizer=config.optimizer,
+        learning_rate=config.learning_rate,
+        weight_decay=config.weight_decay,
+        cosine_warmup=config.cosine_warmup,
+        cosine_cycles=config.cosine_cycles,
+        cosine_min_lr=config.cosine_min_lr,
+        epochs=config.epochs,
+        batch_size=config.batch_size,
+        num_workers=config.num_workers,
+        distributed=config.distributed,
+        local_rank=local_rank,
+        mixed_precision=config.mixed_precision,
+        enable_wandb=config.enable_wandb,
+        config=config
+    )
 
     # Train & evaluate
     start = time.time()

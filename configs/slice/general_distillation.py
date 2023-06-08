@@ -54,11 +54,11 @@ class SliceGeneralDistillation(ConfigBase):
 
         # Weight Alpha
         parser.add_argument('--alpha_ce', type=float, default=1.0)
-        parser.add_argument('--alpha_kd_repr', type=float, default=0.5)
-        parser.add_argument('--alpha_kd_clf', type=float, default=0.5)
+        parser.add_argument('--alpha_kd_repr', type=float, default=10.0)
+        parser.add_argument('--alpha_kd_clf', type=float, default=10.0)
 
         # Knowledge Distillation
-        parser.add_argument('--temperature', type=float, default=1.0)
+        parser.add_argument('--temperature', type=float, default=5.0)
         parser.add_argument('--teacher_dir', type=str)
         parser.add_argument('--teacher_position', type=str, default='last')
         parser.add_argument('--use_teacher', type=str2bool, default=True, help='student uses pretrained teacher.')

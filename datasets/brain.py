@@ -138,15 +138,14 @@ class BrainProcessor(object):
             u_data = u_data[~u_data['RID'].isin(rid_validation)].reset_index(drop=True)
             u_data = u_data[~u_data['RID'].isin(rid_validation)].reset_index(drop=True)
 
-            # 4-1. Unlabeled Complete / Incomplete
+            # 4-1. Unlabeled Complete / Incomplete / MRI-total
             u_complete_train = u_data.loc[u_data['PET_available'], :]
             u_incomplete_train = u_data.loc[~u_data['PET_available'], :]
 
             # 4-2. Concatenate
             complete_train = pd.concat([complete_train, u_complete_train]).reset_index(drop=True)
             incomplete_train = pd.concat([incomplete_train, u_incomplete_train]).reset_index(drop=True)
-
-            # TODO: update mri_total_train (add u_data...?)
+            total_mri_train = pd.concat([total_mri_train, u_data]).reset_index(drop=True)
 
         # 5. Parse
         mri_pet_complete_train = self.parse_data(complete_train)

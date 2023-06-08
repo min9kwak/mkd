@@ -2,62 +2,76 @@ echo "Experiments Started"
 SERVER=main
 GPUS=0
 
-DATA_TYPE=mri
-MRI_TYPE=individual
 PET_TYPE=FBP
-IMAGE_SIZE=72
 CROP_SIZE=64
-RANDOM_STATE=2023
+MCI_ONLY=True
+USE_UNLABELED=True
+TRAIN_SLICES=fixed
+SPACE=3
+N_POINTS=5
+MISSING_RATE=-1
 
-INTENSITY=simple
+EXTRACTOR_TYPE=resnet50
+SMALL_KERNEL=True
+
+HIDDEN=128
+MLP=False
+DROPOUT=0.0
+ENCODER_ACT=sigmoid
+ENCODER_TYPE=mlp
 
 EPOCHS=100
-BATCH_SIZE=16
-OPTIMIZER=adamw
 LEARNING_RATE=0.001
+COSINE_WARMUP=0
 
-TRAIN_SLICES=random
-NUM_SLICES=5
-SLICE_RANGE=0.15
+RANDOM_STATE=2021
 
-for RANDOM_STATE in 2021 2022 2023
+USE_PROJECTOR=True
+USE_SPECIFIC=False
+USE_TRANSFORMER=False
+
+BALANCE=True
+SAMPLER_TYPE=stratified
+DIFFERENT_LR=True
+
+for RANDOM_STATE in 2021
 do
-	for DATA_TYPE in mri
+	for EPOCHS in 100
 	do
-	  for ENCODER_TYPE in resnet50
+	  for DIFFERENT_LR in True False
 	  do
       python ./run_single.py \
       --gpus $GPUS \
       --server $SERVER \
-      --data_type $DATA_TYPE \
-      --mri_type $MRI_TYPE \
       --pet_type $PET_TYPE \
+      --mci_only $MCI_ONLY \
+      --use_unlabeled $USE_UNLABELED \
       --data_file labels/data_info_multi.csv \
-      --pet_type FBP \
-      --image_size $IMAGE_SIZE \
-      --crop_size $CROP_SIZE \
-      --rotate \
-      --flip \
-      --prob 0.5 \
+      --missing_rate $MISSING_RATE \
+      --crop_size_mri $CROP_SIZE \
       --train_slices $TRAIN_SLICES \
-      --num_slices $NUM_SLICES \
-      --slice_range $SLICE_RANGE \
-      --encoder_type $ENCODER_TYPE \
-      --small_kernel \
+      --space $SPACE \
+      --n_points $N_POINTS \
+      --extractor_type $EXTRACTOR_TYPE \
+      --small_kernel $SMALL_KERNEL \
       --random_state $RANDOM_STATE \
-      --intensity $INTENSITY \
+      --hidden $HIDDEN \
+      --mlp $MLP \
+      --dropout $DROPOUT \
+      --encoder_act $ENCODER_ACT \
+      --encoder_type $ENCODER_TYPE \
       --epochs $EPOCHS \
-      --batch_size $BATCH_SIZE \
-      --optimizer $OPTIMIZER \
+      --batch_size 16 \
+      --optimizer adamw \
       --learning_rate $LEARNING_RATE \
       --weight_decay 0.0001 \
-      --cosine_warmup 0 \
-      --cosine_cycles 1 \
-      --cosine_min_lr 0.0 \
-      --save_every 1000 \
-      --enable_wandb \
-      --balance \
-	  --mixed_precision
+      --use_projector $USE_PROJECTOR \
+      --use_specific $USE_SPECIFIC \
+      --use_transformer $USE_TRANSFORMER \
+      --cosine_warmup $COSINE_WARMUP \
+      --balance $BALANCE \
+      --sampler_type $SAMPLER_TYPE \
+      --different_lr $DIFFERENT_LR
     done
 	done
 done
