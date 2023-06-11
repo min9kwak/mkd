@@ -7,22 +7,22 @@ from models.slice.head import Classifier, TransformerEncoder
 def build_networks_single(config, **kwargs):
 
     # 1. Encoder
-    if 'resnet' in config.encoder_type:
-        encoder = ResNetBackbone(name=config.encoder_type, in_channels=1)
-    elif 'densenet' in config.encoder_type:
-        encoder = DenseNetBackbone(name=config.encoder_type, in_channels=1)
+    if 'resnet' in config.extractor_type:
+        extractor = ResNetBackbone(name=config.extractor_type, in_channels=1)
+    elif 'densenet' in config.extractor_type:
+        extractor = DenseNetBackbone(name=config.extractor_type, in_channels=1)
     else:
         raise ValueError
 
     if config.small_kernel:
-        encoder._fix_first_conv()
+        extractor._fix_first_conv()
 
     # 2. Classifier
-    out_dim = encoder.out_channels
-    classifier = GAPLinearClassifier(name=config.encoder_type, in_channels=out_dim, n_classes=2)
+    out_dim = extractor.out_channels
+    classifier = GAPLinearClassifier(name=config.extractor_type, in_channels=out_dim, n_classes=2)
 
     # Return
-    networks = dict(encoder=encoder, classifier=classifier)
+    networks = dict(extractor=extractor, classifier=classifier)
 
     return networks
 

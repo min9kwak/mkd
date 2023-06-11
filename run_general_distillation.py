@@ -49,6 +49,7 @@ def main():
                 pass
         # else:
         #     setattr(config, f'{key}_t', teacher_config[key])
+    setattr(config, 'hash_t', teacher_config['hash'])
 
     config.task = 'GeneralDistillation-' + config.pet_type.upper()
 

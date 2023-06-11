@@ -16,8 +16,8 @@ from datasets.samplers import ImbalancedDatasetSampler, StratifiedSampler
 
 class Single(object):
 
-    # trainable network in each stage. MRI-only model
-    network_names = ['extractor', 'projector', 'encoder', 'classifier']
+    # trainable network in each stage
+    network_names = ['extractor', 'classifier']
 
     def __init__(self, networks: dict, data_type: str):
 
@@ -68,25 +68,14 @@ class Single(object):
             _ = [v.to(self.local_rank) for k, v in self.networks.items()]
 
         # Optimization setting
-        # Optimization setting
-        params = []
-        for name in self.networks.keys():
-            if self.config.different_lr:
-                if name.startswith('encoder_') or name.startswith('decoder_'):
-                    params = params + [{'params': self.networks[name].parameters(),
-                                        'lr': self.config.learning_rate / 10}]
-                else:
-                    params = params + [{'params': self.networks[name].parameters(),
-                                        'lr': self.config.learning_rate}]
-            else:
-                params = params + [{'params': self.networks[name].parameters(),
-                                    'lr': self.config.learning_rate}]
-
-        self.optimizer = get_optimizer(params=params, name=config.optimizer,
-                                       lr=config.learning_rate, weight_decay=config.weight_decay)
+        self.optimizer = get_optimizer(
+            params=[{'params': self.networks['extractor'].parameters()},
+                    {'params': self.networks['classifier'].parameters()}],
+            name=config.optimizer, lr=config.learning_rate, weight_decay=config.weight_decay
+        )
         self.scheduler = get_cosine_scheduler(self.optimizer, epochs=self.epochs, warmup_steps=config.cosine_warmup,
-                                              cycles=config.cosine_cycles, min_lr=config.cosine_min_lr)
-        self.scaler = torch.cuda.amp.GradScaler() if config.mixed_precision else None
+                                              cycles=config.cosine_cycles, min_lr=config.cosine_min_lr,)
+        self.scaler = torch.cuda.amp.GradScaler() if self.mixed_precision else None
 
         # Ready to train
         self.prepared = True
@@ -99,20 +88,20 @@ class Single(object):
         # DataSet & DataLoader
         train_sampler = None
         if self.config.sampler_type == 'over':
-            train_sampler = ImbalancedDatasetSampler(dataset=datasets['train_mri'])
+            train_sampler = ImbalancedDatasetSampler(dataset=datasets['train'])
         elif self.config.sampler_type == 'stratified':
-            train_sampler = StratifiedSampler(class_vector=datasets['train_mri'].y, batch_size=self.batch_size)
+            train_sampler = StratifiedSampler(class_vector=datasets['train'].y, batch_size=self.batch_size)
 
         if train_sampler is not None:
             loaders = {
-                'train': DataLoader(dataset=datasets['train_mri'], batch_size=self.batch_size,
+                'train': DataLoader(dataset=datasets['train'], batch_size=self.batch_size,
                                     sampler=train_sampler, drop_last=True),
                 'validation': DataLoader(dataset=datasets['validation'], batch_size=self.batch_size, drop_last=False),
                 'test': DataLoader(dataset=datasets['test'], batch_size=self.batch_size, drop_last=False)
             }
         else:
             loaders = {
-                'train': DataLoader(dataset=datasets['train_mri'], batch_size=self.batch_size, shuffle=True,
+                'train': DataLoader(dataset=datasets['train'], batch_size=self.batch_size, shuffle=True,
                                     sampler=train_sampler, drop_last=True),
                 'validation': DataLoader(dataset=datasets['validation'], batch_size=self.batch_size, drop_last=False),
                 'test': DataLoader(dataset=datasets['test'], batch_size=self.batch_size, drop_last=False)
@@ -229,19 +218,17 @@ class Single(object):
                 result['loss_ce'][i] = loss_ce.detach()
 
                 if self.local_rank == 0:
-                    desc = f"[bold green] Epoch {self.epoch} [{i+1}/{steps}]: "
+                    desc = f"[bold green] Epoch {self.epoch} [{i + 1}/{steps}]: "
                     for k, v in result.items():
-                        desc += f" {k} : {v[:i+1].mean():.4f} |"
+                        desc += f" {k} : {v[:i + 1].mean():.4f} |"
                     pg.update(task, advance=1., description=desc)
                     pg.refresh()
 
                 # save only labeled samples
-                labeled_index = (y != -1)
-                y = y[labeled_index].chunk(self.config.num_slices)[0].long()
+                y = y.chunk(self.config.num_slices)[0].long()
                 y_true.append(y)
 
                 num_classes = logit.shape[-1]
-                logit = logit[labeled_index]
                 logit = logit.reshape(self.config.num_slices, -1, num_classes).mean(0)
                 y_pred.append(logit)
 
@@ -265,12 +252,11 @@ class Single(object):
         x_mri = torch.concat(batch['mri']).float().to(self.local_rank)
         y = batch['y'].long().repeat(self.config.num_slices).to(self.local_rank)
 
-        h_mri = self.networks['projector'](self.networks['extractor'](x_mri))
-        z_mri = self.networks['encoder'](h_mri)
-        logit = self.networks['classifier'](z_mri)
+        h_mri = self.networks['extractor'](x_mri)
+        logit = self.networks['classifier'](h_mri)
 
         loss_ce = self.loss_function_ce(logit, y)
-        loss_ce = loss_ce / ((y != -1).sum() + 1e-6)
+        loss_ce = loss_ce.mean()
 
         return loss_ce, y, logit
 

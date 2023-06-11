@@ -321,7 +321,10 @@ class GeneralTeacher(object):
         loss_recon = loss_recon_mri + loss_recon_pet
 
         # classification
-        logit = self.networks['classifier']((z_mri_general + z_pet_general))
+        if self.config.use_specific:
+            logit = self.networks['classifier'](z_mri_general + z_pet_general + z_mri + z_pet_general)
+        else:
+            logit = self.networks['classifier'](z_mri_general + z_pet_general)
 
         loss_ce = self.loss_function_ce(logit, y)
         loss_ce = loss_ce / ((y != -1).sum() + 1e-6)

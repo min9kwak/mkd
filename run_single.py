@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
-
+import argparse
 import os
 import sys
 import time
 import rich
 import numpy as np
 import wandb
-from copy import deepcopy
 
 import torch
 import torch.nn as nn
@@ -14,14 +13,12 @@ import torch.nn as nn
 from configs.slice.single import SliceSingleConfig
 from tasks.slice.single import Single
 
-from datasets.brain import BrainProcessor, BrainMRI
-from datasets.slice.transforms import make_mri_transforms
-from models.slice.build import build_networks_general_teacher
+from datasets.brain import BrainProcessor, BrainMRI, BrainPET
+from datasets.slice.transforms import make_mri_transforms, make_pet_transforms
+from models.slice.build import build_networks_single
 
 from utils.logging import get_rich_logger
 from utils.gpu import set_gpu
-
-import argparse
 
 
 def main():
@@ -88,6 +85,8 @@ def main_worker(local_rank: int, config: argparse.Namespace):
     if config.missing_rate == -1.0:
         setattr(config, 'missing_rate', None)
 
+    assert not config.use_unlabeled, "only supervised learning"
+
     processor = BrainProcessor(root=config.root,
                                data_file=config.data_file,
                                mri_type=config.mri_type,
@@ -103,15 +102,16 @@ def main_worker(local_rank: int, config: argparse.Namespace):
     validation_set = BrainMRI(dataset=datasets_dict['mri_pet_complete_validation'], mri_transform=test_transform)
     test_set = BrainMRI(dataset=datasets_dict['mri_pet_complete_test'], mri_transform=test_transform)
 
-    datasets = {'train_mri': train_set, 'validation': validation_set, 'test': test_set}
+    datasets = {'train': train_set, 'validation': validation_set, 'test': test_set}
 
     # Networks
-    networks_ = build_networks_general_teacher(config=config)
-    networks = {'extractor': deepcopy(networks_['extractor_mri']),
-                'projector': deepcopy(networks_['projector_mri']),
-                'encoder': deepcopy(networks_['encoder_mri']),
-                'classifier': deepcopy(networks_['classifier'])}
-    del networks_
+    networks = build_networks_single(config=config)
+
+    # Cross Entropy Loss Function
+    class_weight = None
+    if config.balance:
+        class_weight = torch.tensor(processor.class_weight_mri, dtype=torch.float).to(local_rank)
+    loss_function_ce = nn.CrossEntropyLoss(weight=class_weight, reduction='sum', ignore_index=-1)
 
     # Logging
     logfile = os.path.join(config.checkpoint_dir, 'main.log')
@@ -126,12 +126,6 @@ def main_worker(local_rank: int, config: argparse.Namespace):
     if local_rank == 0:
         rich.print(config.__dict__)
         config.save()
-
-    # Cross Entropy Loss Function
-    class_weight = None
-    if config.balance:
-        class_weight = torch.tensor(processor.class_weight_mri, dtype=torch.float).to(local_rank)
-    loss_function_ce = nn.CrossEntropyLoss(weight=class_weight, reduction='sum', ignore_index=-1)
 
     # Model (Task)
     model = Single(networks=networks, data_type=config.data_type)

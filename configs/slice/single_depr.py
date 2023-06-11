@@ -16,7 +16,7 @@ class SliceSingleConfig(ConfigBase):
         parser.add_argument('--data_type', type=str, default='mri', choices=('mri', 'pet'))
         parser.add_argument('--pet_type', type=str, choices=('FDG', 'FBP'), default='FBP')
         parser.add_argument('--mci_only', type=str2bool, default=True)
-        parser.add_argument('--use_unlabeled', type=str2bool, default=False)
+        parser.add_argument('--use_unlabeled', type=str2bool, default=True)
 
         parser.add_argument('--random_state', type=int, default=2023)
         parser.add_argument('--validation_size', type=float, default=0.1)
@@ -59,6 +59,24 @@ class SliceSingleConfig(ConfigBase):
         parser.add_argument('--extractor_type', type=str, default='resnet50')
         parser.add_argument('--small_kernel', type=str2bool, default=True)
 
+        # Projector, Encoder, and Decoder
+        parser.add_argument('--hidden', type=int, default=128)
+        parser.add_argument('--swap', type=str2bool, default=False)
+        parser.add_argument('--encoder_act', type=str, default='sigmoid', choices=('relu', 'lrelu', 'sigmoid'))
+        parser.add_argument('--encoder_type', type=str, default='mlp', choices=('linear', 'mlp'))
+
+        # Classifier
+        parser.add_argument('--mlp', type=str2bool, default=False) # classifier_type - linear, mlp, transformer
+        parser.add_argument('--dropout', type=float, default=0.0)
+
+        # Optional
+        parser.add_argument('--use_projector', type=str2bool, default=True)
+        parser.add_argument('--use_specific', type=str2bool, default=False)
+        parser.add_argument('--use_transformer', type=str2bool, default=False)
+        parser.add_argument('--ce_only', type=str2bool, default=False)
+        parser.add_argument('--add_type', type=str, default='add', choices=('concat', 'add'))
+        parser.add_argument('--warmup', type=int, default=-1)
+
         return parser
 
     @staticmethod
@@ -87,6 +105,7 @@ class SliceSingleConfig(ConfigBase):
     def task_specific_parser() -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser('Single', add_help=False)
         parser.add_argument('--balance', type=str2bool, default=True, help='apply class balance weight')
-        parser.add_argument('--sampler_type', type=str, default='stratified', choices=('over', 'stratified'))
+        parser.add_argument('--sampler_type', type=str, default=None, choices=('over', 'stratified'))
+        parser.add_argument('--different_lr', type=str2bool, help='apply class balance weight')
 
         return parser
