@@ -334,7 +334,7 @@ class GeneralDistillation(object):
         z_mri_general_in = self.networks['encoder_general_s'](h_mri_in)
 
         if self.config.use_specific:
-            z_mri_in = self.networks['encoder_mri_is'](h_mri_in)
+            z_mri_in = self.networks['encoder_mri_s'](h_mri_in)
             z = z_mri_general_in * 2 + z_mri_in
         else:
             z = z_mri_general_in * 2
