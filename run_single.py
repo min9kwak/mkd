@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-import argparse
 import os
 import sys
 import time
@@ -7,15 +6,19 @@ import rich
 import numpy as np
 import wandb
 
+import argparse
+from copy import deepcopy
+
 import torch
 import torch.nn as nn
 
 from configs.slice.single import SliceSingleConfig
 from tasks.slice.single import Single
+from tasks.slice.single_extended import SingleExtended
 
-from datasets.brain import BrainProcessor, BrainMRI, BrainPET
-from datasets.slice.transforms import make_mri_transforms, make_pet_transforms
-from models.slice.build import build_networks_single
+from datasets.brain import BrainProcessor, BrainMRI
+from datasets.slice.transforms import make_mri_transforms
+from models.slice.build import build_networks_single, build_networks_general_teacher
 
 from utils.logging import get_rich_logger
 from utils.gpu import set_gpu
@@ -105,7 +108,16 @@ def main_worker(local_rank: int, config: argparse.Namespace):
     datasets = {'train': train_set, 'validation': validation_set, 'test': test_set}
 
     # Networks
-    networks = build_networks_single(config=config)
+    if config.extended:
+        # Networks
+        networks_ = build_networks_general_teacher(config=config)
+        networks = {'extractor': deepcopy(networks_['extractor_mri']),
+                    'projector': deepcopy(networks_['projector_mri']),
+                    'encoder': deepcopy(networks_['encoder_mri']),
+                    'classifier': deepcopy(networks_['classifier'])}
+        del networks_
+    else:
+        networks = build_networks_single(config=config)
 
     # Cross Entropy Loss Function
     class_weight = None
@@ -128,10 +140,16 @@ def main_worker(local_rank: int, config: argparse.Namespace):
         config.save()
 
     # Model (Task)
-    model = Single(networks=networks, data_type=config.data_type)
-    model.prepare(config=config,
-                  loss_function_ce=loss_function_ce,
-                  local_rank=local_rank)
+    if config.extended:
+        model = SingleExtended(networks=networks, data_type=config.data_type)
+        model.prepare(config=config,
+                      loss_function_ce=loss_function_ce,
+                      local_rank=local_rank)
+    else:
+        model = Single(networks=networks, data_type=config.data_type)
+        model.prepare(config=config,
+                      loss_function_ce=loss_function_ce,
+                      local_rank=local_rank)
 
     # Train & evaluate
     start = time.time()

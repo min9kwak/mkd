@@ -23,11 +23,14 @@ RANDOM_STATE=2021
 BALANCE=True
 SAMPLER_TYPE=stratified
 
+EXTENDED=True
+DIFFERENT_LR=False
+
 for RANDOM_STATE in 2021
 do
 	for EPOCHS in 100
 	do
-	  for DIFFERENT_LR in True False
+	  for BALANCE in True
 	  do
       python ./run_single.py \
       --gpus $GPUS \
@@ -51,7 +54,9 @@ do
       --weight_decay 0.0001 \
       --cosine_warmup $COSINE_WARMUP \
       --balance $BALANCE \
-      --sampler_type $SAMPLER_TYPE
+      --sampler_type $SAMPLER_TYPE \
+      --extended $EXTENDED \
+      --different_lr $DIFFERENT_LR
     done
 	done
 done

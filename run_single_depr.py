@@ -11,8 +11,8 @@ from copy import deepcopy
 import torch
 import torch.nn as nn
 
-from configs.slice.single_depr import SliceSingleConfig
-from tasks.slice.single_depr import Single
+from configs.slice.single_extended import SliceSingleConfig
+from tasks.slice.single_extended import SingleExtended
 
 from datasets.brain import BrainProcessor, BrainMRI
 from datasets.slice.transforms import make_mri_transforms
@@ -134,7 +134,7 @@ def main_worker(local_rank: int, config: argparse.Namespace):
     loss_function_ce = nn.CrossEntropyLoss(weight=class_weight, reduction='sum', ignore_index=-1)
 
     # Model (Task)
-    model = Single(networks=networks, data_type=config.data_type)
+    model = SingleExtended(networks=networks, data_type=config.data_type)
     model.prepare(config=config,
                   loss_function_ce=loss_function_ce,
                   local_rank=local_rank)

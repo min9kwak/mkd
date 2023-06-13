@@ -14,7 +14,7 @@ from utils.optimization import get_cosine_scheduler
 from datasets.samplers import ImbalancedDatasetSampler, StratifiedSampler
 
 
-class Single(object):
+class SingleExtended(object):
 
     # trainable network in each stage. MRI-only model
     network_names = ['extractor', 'projector', 'encoder', 'classifier']
@@ -98,20 +98,20 @@ class Single(object):
         # DataSet & DataLoader
         train_sampler = None
         if self.config.sampler_type == 'over':
-            train_sampler = ImbalancedDatasetSampler(dataset=datasets['train_mri'])
+            train_sampler = ImbalancedDatasetSampler(dataset=datasets['train'])
         elif self.config.sampler_type == 'stratified':
-            train_sampler = StratifiedSampler(class_vector=datasets['train_mri'].y, batch_size=self.batch_size)
+            train_sampler = StratifiedSampler(class_vector=datasets['train'].y, batch_size=self.batch_size)
 
         if train_sampler is not None:
             loaders = {
-                'train': DataLoader(dataset=datasets['train_mri'], batch_size=self.batch_size,
+                'train': DataLoader(dataset=datasets['train'], batch_size=self.batch_size,
                                     sampler=train_sampler, drop_last=True),
                 'validation': DataLoader(dataset=datasets['validation'], batch_size=self.batch_size, drop_last=False),
                 'test': DataLoader(dataset=datasets['test'], batch_size=self.batch_size, drop_last=False)
             }
         else:
             loaders = {
-                'train': DataLoader(dataset=datasets['train_mri'], batch_size=self.batch_size, shuffle=True,
+                'train': DataLoader(dataset=datasets['train'], batch_size=self.batch_size, shuffle=True,
                                     sampler=train_sampler, drop_last=True),
                 'validation': DataLoader(dataset=datasets['validation'], batch_size=self.batch_size, drop_last=False),
                 'test': DataLoader(dataset=datasets['test'], batch_size=self.batch_size, drop_last=False)
@@ -119,6 +119,9 @@ class Single(object):
 
         # Logging
         logger = kwargs.get('logger', None)
+
+        if self.enable_wandb:
+            wandb.watch([v for k, v in self.networks.items()], log='all', log_freq=len(loaders['train']))
 
         # Find the best model by MRI-only test loss
         best_eval_loss = float('inf')
@@ -235,12 +238,10 @@ class Single(object):
                     pg.refresh()
 
                 # save only labeled samples
-                labeled_index = (y != -1)
-                y = y[labeled_index].chunk(self.config.num_slices)[0].long()
+                y = y.chunk(self.config.num_slices)[0].long()
                 y_true.append(y)
 
                 num_classes = logit.shape[-1]
-                logit = logit[labeled_index]
                 logit = logit.reshape(self.config.num_slices, -1, num_classes).mean(0)
                 y_pred.append(logit)
 
@@ -269,7 +270,7 @@ class Single(object):
         logit = self.networks['classifier'](z_mri)
 
         loss_ce = self.loss_function_ce(logit, y)
-        loss_ce = loss_ce / ((y != -1).sum() + 1e-6)
+        loss_ce = loss_ce.mean()
 
         return loss_ce, y, logit
 

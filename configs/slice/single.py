@@ -59,6 +59,22 @@ class SliceSingleConfig(ConfigBase):
         parser.add_argument('--extractor_type', type=str, default='resnet50')
         parser.add_argument('--small_kernel', type=str2bool, default=True)
 
+        # Extended Network
+        parser.add_argument('--extended', type=str2bool, default=True)
+
+        parser.add_argument('--hidden', type=int, default=128)
+        parser.add_argument('--encoder_act', type=str, default='sigmoid', choices=('relu', 'lrelu', 'sigmoid'))
+        parser.add_argument('--encoder_type', type=str, default='mlp', choices=('linear', 'mlp'))
+
+        # Classifier
+        parser.add_argument('--mlp', type=str2bool, default=False) # classifier_type - linear, mlp, transformer
+        parser.add_argument('--dropout', type=float, default=0.0)
+
+        parser.add_argument('--use_projector', type=str2bool, default=True)
+        parser.add_argument('--use_specific', type=str2bool, default=False)
+        parser.add_argument('--use_transformer', type=str2bool, default=False)
+        parser.add_argument('--add_type', type=str, default='add', choices=('concat', 'add'))
+
         return parser
 
     @staticmethod
@@ -88,5 +104,6 @@ class SliceSingleConfig(ConfigBase):
         parser = argparse.ArgumentParser('Single', add_help=False)
         parser.add_argument('--balance', type=str2bool, default=True, help='apply class balance weight')
         parser.add_argument('--sampler_type', type=str, default='stratified', choices=('over', 'stratified'))
+        parser.add_argument('--different_lr', type=str2bool, help='apply class balance weight')
 
         return parser
