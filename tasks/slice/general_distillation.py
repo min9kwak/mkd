@@ -16,19 +16,6 @@ from datasets.samplers import ImbalancedDatasetSampler, StratifiedSampler
 
 
 class GeneralDistillation(object):
-    # https://github.com/declare-lab/MISA
-    network_names = [
-        # Teacher
-        'extractor_mri', 'extractor_pet',
-        'projector_mri', 'projector_pet',
-        'encoder_general',
-        'classifier',
-
-        # Student
-        'extractor_mri_s', 'projector_mri_s',
-        'encoder_general_s'
-        'classifier_s'
-    ]
 
     def __init__(self,
                  networks: dict):
@@ -311,8 +298,14 @@ class GeneralDistillation(object):
             z_mri_general = self.networks['encoder_general'](h_mri)
             z_pet_general = self.networks['encoder_general'](h_pet)
 
+            if self.config.use_specific:
+                z_mri = self.networks['encoder_mri'](h_mri)
+                z = z_mri_general + z_pet_general + z_mri
+            else:
+                z = z_mri_general + z_pet_general
+
             # classification
-            logit = self.networks['classifier'](z_mri_general + z_pet_general)
+            logit = self.networks['classifier'](z)
 
         # 2. Student
         h_mri_s = self.networks['projector_mri_s'](self.networks['extractor_mri_s'](x_mri))
@@ -339,7 +332,13 @@ class GeneralDistillation(object):
         # 1. Student
         h_mri_in = self.networks['projector_mri_s'](self.networks['extractor_mri_s'](x_mri_in))
         z_mri_general_in = self.networks['encoder_general_s'](h_mri_in)
-        logit_in = self.networks['classifier_s'](z_mri_general_in * 2)
+
+        if self.config.use_specific:
+            z_mri_in = self.networks['encoder_mri_is'](h_mri_in)
+            z = z_mri_general_in * 2 + z_mri_in
+        else:
+            z = z_mri_general_in * 2
+        logit_in = self.networks['classifier_s'](z)
 
         # C. Loss Aggregation
         logit_total = torch.concat([logit_s, logit_in])

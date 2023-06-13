@@ -63,4 +63,8 @@ class SliceGeneralDistillation(ConfigBase):
         parser.add_argument('--teacher_position', type=str, default='last')
         parser.add_argument('--use_teacher', type=str2bool, default=True, help='student uses pretrained teacher.')
 
+        # Student network type
+        parser.add_argument('--use_specific', type=str2bool, default=False)
+        parser.add_argument('--inherit_classifier', type=str2bool, default=False)
+
         return parser

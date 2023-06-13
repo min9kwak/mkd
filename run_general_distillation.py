@@ -47,8 +47,11 @@ def main():
                 setattr(config, key, teacher_config[key])
             except:
                 pass
-        # else:
-        #     setattr(config, f'{key}_t', teacher_config[key])
+        else:
+            try:
+                setattr(config, f'{key}_t', teacher_config[key])
+            except:
+                pass
     setattr(config, 'hash_t', teacher_config['hash'])
 
     config.task = 'GeneralDistillation-' + config.pet_type.upper()
@@ -142,30 +145,34 @@ def main_worker(local_rank: int, config: argparse.Namespace):
     datasets = {'train': train_set, 'train_mri': train_mri_set, 'validation': validation_set, 'test': test_set}
 
     # Networks
-    networks = build_networks_general_teacher(config=config)
-
-    # teacher_network_names = ['extractor_mri', 'extractor_pet', 'projector_mri', 'projector_pet',
-    #                          'encoder_general', 'encoder_mri', 'encoder_pet', 'decoder_mri', 'decoder_pet',
-    #                          'classifier']
-    # student_network_names = ['extractor_mri', 'projector_mri',
-    #                          'encoder_general', 'encoder_mri', 'decoder_mri', 'transformer_encoder',
-    #                          'classifier']
-
     teacher_network_names = ['extractor_mri', 'extractor_pet', 'projector_mri', 'projector_pet',
                              'encoder_general', 'classifier']
     student_network_names = ['extractor_mri', 'projector_mri',
-                             'encoder_general',
-                             'classifier']
+                             'encoder_general', 'classifier']
+    if config.use_specific:
+        teacher_network_names += ['encoder_mri']
+        student_network_names += ['encoder_mri']
 
+    networks = build_networks_general_teacher(config=config)
     networks = {k: v for k, v in networks.items() if k in teacher_network_names and v is not None}
-    networks_student = {f'{k}_s': deepcopy(v) for k, v in networks.items() if k in student_network_names and v is not None}
+    networks_student = {f'{k}_s': deepcopy(v) for k, v in networks.items()
+                        if k in student_network_names and v is not None}
 
     # Load teacher / use_teacher, copy weights to student / combine dictionaries
     for name, network in networks.items():
         network.load_weights_from_checkpoint(path=config.teacher_file, key=name)
     for name_s, network_s in networks_student.items():
         if config.use_teacher:
-            network_s.load_weights_from_checkpoint(path=config.teacher_file, key=name_s.replace('_s', ''))
+            if config.use_specific:
+                if name_s == 'classifier':
+                    if config.inherit_classifier:
+                        network_s.load_weights_from_checkpoint(path=config.teacher_file, key=name_s.replace('_s', ''))
+                    else:
+                        pass
+                else:
+                    network_s.load_weights_from_checkpoint(path=config.teacher_file, key=name_s.replace('_s', ''))
+            else:
+                network_s.load_weights_from_checkpoint(path=config.teacher_file, key=name_s.replace('_s', ''))
         networks[name_s] = network_s
     del networks_student
 

@@ -12,7 +12,7 @@ SAMPLER_TYPE=stratified
 DIFFERENT_LR=True
 TEMPERATURE=1.0
 
-ALPHA_CE=1.0
+ALPHA_CE=10.0
 ALPHA_KD_CLF=10.0
 ALPHA_KD_REPR=0.5
 
@@ -20,17 +20,18 @@ TEACHER_PRE="checkpoints/GeneralTeacher-FBP/"
 HASH="2023-05-31_02-42-45"
 TEACHER_POSITION=last
 USE_TEACHER=True
+USE_SPECIFIC=False
+INHERIT_CLASSIFIER=False
 
-# "2023-06-03_15-08-06" "2023-06-03_04-19-11" "2023-06-03_04-18-56" "2023-06-02_13-39-06"
-for HASH in "2023-06-03_15-08-06" "2023-06-03_04-19-11" "2023-06-03_04-18-56" "2023-06-02_13-39-06"
+for HASH in "2023-06-03_04-19-11" "2023-06-10_03-29-36" "2023-06-10_03-29-57" "2023-06-10_13-28-17" "2023-06-10_14-14-27"
 do
   for LEARNING_RATE in 0.0001
   do
-    for EPOCHS in 100
+    for EPOCHS in 30
     do
       for ALPHA_KD_CLF in 10.0
       do
-        for TEMPERATURE in 3.0 5.0
+        for TEMPERATURE in 5.0
         do
           TEACHER_DIR="${TEACHER_PRE}${HASH}"
           python ./run_general_distillation.py \
@@ -51,7 +52,9 @@ do
           --temperature $TEMPERATURE \
           --teacher_dir $TEACHER_DIR \
           --teacher_position $TEACHER_POSITION \
-          --use_teacher $USE_TEACHER
+          --use_teacher $USE_TEACHER \
+          --use_specific $USE_SPECIFIC \
+          --inherit_classifier $INHERIT_CLASSIFIER
         done
       done
     done
