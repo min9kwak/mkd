@@ -270,7 +270,6 @@ class SingleExtended(object):
         logit = self.networks['classifier'](z_mri)
 
         loss_ce = self.loss_function_ce(logit, y)
-        loss_ce = loss_ce.mean()
 
         return loss_ce, y, logit
 

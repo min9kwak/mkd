@@ -123,7 +123,7 @@ def main_worker(local_rank: int, config: argparse.Namespace):
     class_weight = None
     if config.balance:
         class_weight = torch.tensor(processor.class_weight_mri, dtype=torch.float).to(local_rank)
-    loss_function_ce = nn.CrossEntropyLoss(weight=class_weight, reduction='sum', ignore_index=-1)
+    loss_function_ce = nn.CrossEntropyLoss(weight=class_weight, reduction='mean')
 
     # Logging
     logfile = os.path.join(config.checkpoint_dir, 'main.log')
