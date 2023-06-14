@@ -1,5 +1,5 @@
 echo "Experiments Started"
-SERVER=main
+SERVER=workstation3
 GPUS=0
 
 PET_TYPE=FBP
@@ -31,9 +31,9 @@ LOSS_SIM="cosine"
 LOSS_DIFF="cosine"
 
 ALPHA_CE=1.0
-ALPHA_SIM=1.0
-ALPHA_DIFF=1.0
-ALPHA_RECON=0.5
+ALPHA_SIM=10.0
+ALPHA_DIFF=5.0
+ALPHA_RECON=0.1
 
 RANDOM_STATE=2021
 
