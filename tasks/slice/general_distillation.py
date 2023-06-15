@@ -298,7 +298,7 @@ class GeneralDistillation(object):
             z_mri_general = self.networks['encoder_general'](h_mri)
             z_pet_general = self.networks['encoder_general'](h_pet)
 
-            if self.config.use_specific:
+            if self.config.use_specific_t:
                 z_mri = self.networks['encoder_mri'](h_mri)
                 z = z_mri_general + z_pet_general + z_mri
             else:
@@ -310,13 +310,27 @@ class GeneralDistillation(object):
         # 2. Student
         h_mri_s = self.networks['projector_mri_s'](self.networks['extractor_mri_s'](x_mri))
         z_mri_general_s = self.networks['encoder_general_s'](h_mri_s)
-        logit_s = self.networks['classifier_s'](z_mri_general_s * 2)
+        if self.config.use_specific:
+            z_mri_s = self.networks['encoder_mri_s'](h_mri_s)
+            logit_s = self.networks['classifier_s'](z_mri_general_s * 2 + z_mri_s)
+        else:
+            logit_s = self.networks['classifier_s'](z_mri_general_s * 2)
 
         # 4. Knowledge Distillation
         # general representation
-        cos = torch.einsum('nc,nc->n', [z_mri_general, z_mri_general_s])
-        loss_kd_repr = (1 - cos) / (2 * self.config.temperature ** 2)
-        loss_kd_repr = loss_kd_repr.mean()
+        cos_general = torch.einsum('nc,nc->n', [z_mri_general, z_mri_general_s])
+        loss_kd_repr_general = (1 - cos_general) / (2 * self.config.temperature ** 2)
+        loss_kd_repr_general = loss_kd_repr_general.mean()
+
+        # specific representation
+        # TODO: & self.config.use_specific_t ?
+        if self.config.use_specific:
+            cos_mri = torch.einsum('nc,nc->n', [z_mri, z_mri_s])
+            loss_kd_repr_mri = (1 - cos_mri) / (2 * self.config.temperature ** 2)
+            loss_kd_repr_mri = loss_kd_repr_mri.mean()
+            loss_kd_repr = (loss_kd_repr_general + loss_kd_repr_mri) / 2
+        else:
+            loss_kd_repr = loss_kd_repr_general
 
         # classification
         loss_kd_clf = F.kl_div(F.log_softmax(logit_s / self.config.temperature, dim=1),
