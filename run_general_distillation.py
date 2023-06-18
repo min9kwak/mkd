@@ -149,9 +149,9 @@ def main_worker(local_rank: int, config: argparse.Namespace):
                              'encoder_general', 'classifier']
     student_network_names = ['extractor_mri', 'projector_mri',
                              'encoder_general', 'classifier']
-    if config.use_specific:
-        teacher_network_names += ['encoder_mri']
-        student_network_names += ['encoder_mri']
+    # if config.use_specific:
+    teacher_network_names += ['encoder_mri']
+    student_network_names += ['encoder_mri']
 
     networks = build_networks_general_teacher(config=config)
     networks = {k: v for k, v in networks.items() if k in teacher_network_names and v is not None}
@@ -163,14 +163,11 @@ def main_worker(local_rank: int, config: argparse.Namespace):
         network.load_weights_from_checkpoint(path=config.teacher_file, key=name)
     for name_s, network_s in networks_student.items():
         if config.use_teacher:
-            if config.use_specific:
-                if name_s == 'classifier':
-                    if config.inherit_classifier:
-                        network_s.load_weights_from_checkpoint(path=config.teacher_file, key=name_s.replace('_s', ''))
-                    else:
-                        pass
-                else:
+            if name_s == 'classifier':
+                if config.inherit_classifier:
                     network_s.load_weights_from_checkpoint(path=config.teacher_file, key=name_s.replace('_s', ''))
+                else:
+                    pass
             else:
                 network_s.load_weights_from_checkpoint(path=config.teacher_file, key=name_s.replace('_s', ''))
         networks[name_s] = network_s

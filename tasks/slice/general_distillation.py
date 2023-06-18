@@ -323,8 +323,7 @@ class GeneralDistillation(object):
         loss_kd_repr_general = loss_kd_repr_general.mean()
 
         # specific representation
-        # TODO: & self.config.use_specific_t ?
-        if self.config.use_specific:
+        if self.config.use_specific and self.config.use_specific_t:
             cos_mri = torch.einsum('nc,nc->n', [z_mri, z_mri_s])
             loss_kd_repr_mri = (1 - cos_mri) / (2 * self.config.temperature ** 2)
             loss_kd_repr_mri = loss_kd_repr_mri.mean()
