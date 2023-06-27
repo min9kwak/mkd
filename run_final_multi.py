@@ -33,7 +33,7 @@ def main():
     config = SliceFinalMutli.parse_arguments()
 
     student_file = os.path.join(config.student_dir, f"ckpt.{config.student_position}.pth.tar")
-    setattr(config, 'teacher_file', student_file)
+    setattr(config, 'student_file', student_file)
 
     student_config = os.path.join(config.student_dir, "configs.json")
     with open(student_config, 'rb') as fb:
@@ -146,22 +146,19 @@ def main_worker(local_rank: int, config: argparse.Namespace):
     networks = build_networks_general_teacher(config=config)
 
     # load from teacher and student
-    teacher_network_names = ['extractor_pet', 'projector_pet',
+    teacher_network_names = ['extractor_pet', 'projector_pet', 'extractor_mri', 'projector_mri',
                              'encoder_general', 'encoder_pet', 'encoder_mri',
                              'classifier']
     student_network_names = ['extractor_mri', 'projector_mri']
 
     for name in teacher_network_names:
         networks[name].load_weights_from_checkpoint(path=config.teacher_file, key=name)
+
     for name in student_network_names:
-        networks[name].load_weights_from_checkpoint(path=config.student_file, key=name + '_s')
-
-    # load from student
-    networks['mri_extractor'].load_weights_from_checkpoint(path=config.student_file, key='mri_extractor_s')
-    networks['mri_projector'].load_weights_from_checkpoint(path=config.student_file, key='mri_projector_s')
-
-    networks['mri_extractor_s'] = deepcopy(networks['mri_extractor'])
-    networks['mri_projector_s'] = deepcopy(networks['mri_projector'])
+        network = deepcopy(networks[name])
+        network.load_weights_from_checkpoint(path=config.student_file, key=name + '_s')
+        networks[name + '_s'] = network
+        del network
 
     # Logging
     logfile = os.path.join(config.checkpoint_dir, 'main.log')
