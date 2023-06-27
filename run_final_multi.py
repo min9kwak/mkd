@@ -145,9 +145,16 @@ def main_worker(local_rank: int, config: argparse.Namespace):
     # Networks
     networks = build_networks_general_teacher(config=config)
 
-    # load from teacher
-    for name, network in networks.items():
-        network.load_weights_from_checkpoint(path=config.teacher_file, key=name)
+    # load from teacher and student
+    teacher_network_names = ['extractor_pet', 'projector_pet',
+                             'encoder_general', 'encoder_pet', 'encoder_mri',
+                             'classifier']
+    student_network_names = ['extractor_mri', 'projector_mri']
+
+    for name in teacher_network_names:
+        networks[name].load_weights_from_checkpoint(path=config.teacher_file, key=name)
+    for name in student_network_names:
+        networks[name].load_weights_from_checkpoint(path=config.student_file, key=name + '_s')
 
     # load from student
     networks['mri_extractor'].load_weights_from_checkpoint(path=config.student_file, key='mri_extractor_s')
