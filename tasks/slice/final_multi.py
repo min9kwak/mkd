@@ -32,14 +32,21 @@ class FinalMulti(object):
     def prepare(self,
                 config: argparse.Namespace,
                 loss_function_ce,
+                loss_function_sim,
+                loss_function_diff,
+                loss_function_recon,
+                swap: bool,
                 local_rank: int = 0,
                 **kwargs):
 
         # Set attributes
         self.config = config
 
-        # CE / CMD / DIFF / MSE / KD (clf)
+        # CE / CMD / DIFF / MSE / KD (repr)
         self.loss_function_ce = loss_function_ce
+        self.loss_function_sim = loss_function_sim
+        self.loss_function_diff = loss_function_diff
+        self.loss_function_recon = loss_function_recon
 
         self.checkpoint_dir = config.checkpoint_dir
         self.epochs = config.epochs
@@ -66,14 +73,15 @@ class FinalMulti(object):
         else:
             _ = [v.to(self.local_rank) for k, v in self.networks.items()]
 
-        # Teacher model is fixed to eval mode
+        # Student model is fixed to eval mode
         for name in self.networks.keys():
-            self.networks[name].eval()
+            if name.endswith('_s'):
+                self.networks[name].eval()
 
         # Optimization setting
         params = []
         for name in self.networks.keys():
-            if name.endswith('_s'):
+            if not name.endswith('_s'):
                 if self.config.different_lr:
                     if name.startswith('encoder_') or name.startswith('decoder_'):
                         params = params + [{'params': self.networks[name].parameters(),
@@ -91,9 +99,9 @@ class FinalMulti(object):
                                               cycles=config.cosine_cycles, min_lr=config.cosine_min_lr)
         self.scaler = torch.cuda.amp.GradScaler() if config.mixed_precision else None
 
-        # Freeze & Eval Teacher Model
+        # Freeze & Eval Student Model
         for name in self.networks.keys():
-            if not name.endswith('_s'):
+            if name.endswith('_s'):
                 self.freeze_params(self.networks[name], freeze=True)
         self._set_learning_phase(train=False)
 
@@ -106,20 +114,16 @@ class FinalMulti(object):
             raise RuntimeError("Training not prepared.")
 
         # DataSet & DataLoader
-        train_sampler, train_mri_sampler = None, None
+        train_sampler = None
         if self.config.sampler_type == 'over':
             train_sampler = ImbalancedDatasetSampler(dataset=datasets['train'])
-            train_mri_sampler = ImbalancedDatasetSampler(dataset=datasets['train_mri'])
         elif self.config.sampler_type == 'stratified':
             train_sampler = StratifiedSampler(class_vector=datasets['train'].y, batch_size=self.batch_size)
-            train_mri_sampler = StratifiedSampler(class_vector=datasets['train_mri'].y, batch_size=self.batch_size)
 
         if train_sampler is not None:
             loaders = {
                 'train': DataLoader(dataset=datasets['train'], batch_size=self.batch_size,
                                     sampler=train_sampler, drop_last=True),
-                'train_mri': DataLoader(dataset=datasets['train_mri'], batch_size=self.batch_size,
-                                        sampler=train_mri_sampler, drop_last=True),
                 'validation': DataLoader(dataset=datasets['validation'], batch_size=self.batch_size, drop_last=False),
                 'test': DataLoader(dataset=datasets['test'], batch_size=self.batch_size, drop_last=False)
             }
@@ -127,8 +131,6 @@ class FinalMulti(object):
             loaders = {
                 'train': DataLoader(dataset=datasets['train'], batch_size=self.batch_size, shuffle=True,
                                     sampler=train_sampler, drop_last=True),
-                'train_mri': DataLoader(dataset=datasets['train_mri'], batch_size=self.batch_size, shuffle=True,
-                                        sampler=train_mri_sampler, drop_last=True),
                 'validation': DataLoader(dataset=datasets['validation'], batch_size=self.batch_size, drop_last=False),
                 'test': DataLoader(dataset=datasets['test'], batch_size=self.batch_size, drop_last=False)
             }
@@ -146,8 +148,7 @@ class FinalMulti(object):
 
             # Train and Test
             epoch_history = collections.defaultdict(dict)
-            train_history = self.train(data_loader=loaders['train'], data_mri_loader=loaders['train_mri'],
-                                       adjusted=False)
+            train_history = self.train(loaders['train'], adjusted=False)
             validation_history = self.evaluate(loaders['validation'], adjusted=False)
             test_history = self.evaluate(loaders['test'], adjusted=False)
 
@@ -222,15 +223,20 @@ class FinalMulti(object):
         if self.enable_wandb:
             wandb.log(best_history)
 
-    def train(self, data_loader, data_mri_loader, adjusted=False):
+    def train(self, data_loader, adjusted=False):
 
         self._set_learning_phase(train=True)
 
-        steps = min(len(data_loader), len(data_mri_loader))
+        steps = len(data_loader)
         result = {'total_loss': torch.zeros(steps, device=self.local_rank),
                   'loss_ce': torch.zeros(steps, device=self.local_rank),
-                  'loss_kd_repr': torch.zeros(steps, device=self.local_rank),
-                  'loss_kd_clf': torch.zeros(steps, device=self.local_rank),}
+                  'loss_sim': torch.zeros(steps, device=self.local_rank),
+                  'loss_diff_specific': torch.zeros(steps, device=self.local_rank),
+                  'loss_diff_mri': torch.zeros(steps, device=self.local_rank),
+                  'loss_diff_pet': torch.zeros(steps, device=self.local_rank),
+                  'loss_recon_mri': torch.zeros(steps, device=self.local_rank),
+                  'loss_recon_pet': torch.zeros(steps, device=self.local_rank),
+                  'loss_kd_repr': torch.zeros(steps, device=self.local_rank)}
 
         with get_rich_pbar(transient=True, auto_refresh=False) as pg:
 
@@ -238,16 +244,23 @@ class FinalMulti(object):
                 task = pg.add_task(f"[bold red] Training...", total=steps)
 
             y_true, y_pred = [], []
-            for i, (batch, batch_mri) in enumerate(zip(data_loader, data_mri_loader)):
+            for i, batch in enumerate(data_loader):
                 with torch.cuda.amp.autocast(self.mixed_precision):
-                    loss, loss_ce, loss_kd_repr, loss_kd_clf, y, logit_s = self.train_step(batch, batch_mri)
+                    loss, loss_ce, loss_sim, loss_diff_specific, loss_diff_mri, loss_diff_pet, \
+                    loss_recon_mri, loss_recon_pet, loss_kd_repr, y, logit = \
+                        self.train_step(batch)
                 self.update(loss)
 
                 # save monitoring values
                 result['total_loss'][i] = loss.detach()
                 result['loss_ce'][i] = loss_ce.detach()
+                result['loss_sim'][i] = loss_sim.detach()
+                result['loss_diff_specific'][i] = loss_diff_specific.detach()
+                result['loss_diff_mri'][i] = loss_diff_mri.detach()
+                result['loss_diff_pet'][i] = loss_diff_pet.detach()
+                result['loss_recon_mri'][i] = loss_recon_mri.detach()
+                result['loss_recon_pet'][i] = loss_recon_pet.detach()
                 result['loss_kd_repr'][i] = loss_kd_repr.detach()
-                result['loss_kd_clf'][i] = loss_kd_clf.detach()
 
                 if self.local_rank == 0:
                     desc = f"[bold green] Epoch {self.epoch} [{i + 1}/{steps}]: "
@@ -261,10 +274,10 @@ class FinalMulti(object):
                 y = y[labeled_index].chunk(self.config.num_slices)[0].long()
                 y_true.append(y)
 
-                num_classes = logit_s.shape[-1]
-                logit_s = logit_s[labeled_index]
-                logit_s = logit_s.reshape(self.config.num_slices, -1, num_classes).mean(0)
-                y_pred.append(logit_s)
+                num_classes = logit.shape[-1]
+                logit = logit[labeled_index]
+                logit = logit.reshape(self.config.num_slices, -1, num_classes).mean(0)
+                y_pred.append(logit)
 
         result = {k: v.mean().item() for k, v in result.items()}
 
@@ -280,91 +293,69 @@ class FinalMulti(object):
 
         return result
 
-    def train_step(self, batch, batch_mri):
+    def train_step(self, batch):
 
-        # A. Complete Training. Some of them are unlabeled.
         # input data
         x_mri = torch.concat(batch['mri']).float().to(self.local_rank)
         x_pet = torch.concat(batch['pet']).float().to(self.local_rank)
         y = batch['y'].long().repeat(self.config.num_slices).to(self.local_rank)
 
-        # 1. Teacher
+        # 1. Student
         with torch.no_grad():
             # hidden representations - h
-            h_mri = self.networks['projector_mri'](self.networks['extractor_mri'](x_mri))
-            h_pet = self.networks['projector_pet'](self.networks['extractor_pet'](x_pet))
+            h_mri_s = self.networks['projector_mri_s'](self.networks['extractor_mri_s'](x_mri))
 
-            # separated representations - z
-            z_mri_general = self.networks['encoder_general'](h_mri)
-            z_pet_general = self.networks['encoder_general'](h_pet)
+        # 2. Final Multi
+        # hidden representations - h
+        h_mri = self.networks['projector_mri'](self.networks['extractor_mri'](x_mri))
+        h_pet = self.networks['projector_pet'](self.networks['extractor_pet'](x_pet))
 
-            if self.config.use_specific_t:
-                z_mri = self.networks['encoder_mri'](h_mri)
-                z = z_mri_general + z_pet_general + z_mri
-            else:
-                z = z_mri_general + z_pet_general
+        # separated representations - z
+        z_mri_general = self.networks['encoder_general'](h_mri)
+        z_pet_general = self.networks['encoder_general'](h_pet)
+        z_mri = self.networks['encoder_mri'](h_mri)
+        z_pet = self.networks['encoder_pet'](h_pet)
 
-            # classification
-            logit = self.networks['classifier'](z)
+        # difference
+        loss_diff_specific = self.loss_function_diff(z_mri, z_pet)
+        loss_diff_mri = self.loss_function_diff(z_mri, z_mri_general)
+        loss_diff_pet = self.loss_function_diff(z_pet, z_pet_general)
+        loss_diff = loss_diff_specific + loss_diff_mri + loss_diff_pet
 
-        # 2. Student
-        h_mri_s = self.networks['projector_mri_s'](self.networks['extractor_mri_s'](x_mri))
-        z_mri_general_s = self.networks['encoder_general_s'](h_mri_s)
-        if self.config.use_specific:
-            z_mri_s = self.networks['encoder_mri_s'](h_mri_s)
-            logit_s = self.networks['classifier_s'](z_mri_general_s * 2 + z_mri_s)
-        else:
-            logit_s = self.networks['classifier_s'](z_mri_general_s * 2)
+        # similarity
+        loss_sim = self.loss_function_sim(z_mri_general, z_pet_general)
 
-        # 4. Knowledge Distillation
-        # general representation
-        cos_general = torch.einsum('nc,nc->n', [z_mri_general, z_mri_general_s])
-        loss_kd_repr_general = (1 - cos_general) / (2 * self.config.temperature ** 2)
-        loss_kd_repr_general = loss_kd_repr_general.mean()
+        # reconstruction - h
+        h_mri_recon = self.networks['decoder_mri'](z_mri_general + z_mri)
+        h_pet_recon = self.networks['decoder_pet'](z_pet_general + z_pet)
 
-        # specific representation
-        if self.config.use_specific and self.config.use_specific_t:
-            cos_mri = torch.einsum('nc,nc->n', [z_mri, z_mri_s])
-            loss_kd_repr_mri = (1 - cos_mri) / (2 * self.config.temperature ** 2)
-            loss_kd_repr_mri = loss_kd_repr_mri.mean()
-            loss_kd_repr = (loss_kd_repr_general + loss_kd_repr_mri) / 2
-        else:
-            loss_kd_repr = loss_kd_repr_general
+        loss_recon_mri = self.loss_function_recon(h_mri_recon, h_mri)
+        loss_recon_pet = self.loss_function_recon(h_pet_recon, h_pet)
+        loss_recon = loss_recon_mri + loss_recon_pet
 
         # classification
-        loss_kd_clf = F.kl_div(F.log_softmax(logit_s / self.config.temperature, dim=1),
-                               F.softmax(logit / self.config.temperature, dim=1),
-                               reduction='none')
-        loss_kd_clf = (loss_kd_clf[y != -1]).sum() / ((y != -1).sum() + 1e-6)
-
-        # B. Incomplete Training. Some of them are unlabeled.
-        # input data
-        x_mri_in = torch.concat(batch_mri['mri']).float().to(self.local_rank)
-        y_in = batch_mri['y'].long().repeat(self.config.num_slices).to(self.local_rank)
-
-        # 1. Student
-        h_mri_in = self.networks['projector_mri_s'](self.networks['extractor_mri_s'](x_mri_in))
-        z_mri_general_in = self.networks['encoder_general_s'](h_mri_in)
-
         if self.config.use_specific:
-            z_mri_in = self.networks['encoder_mri_s'](h_mri_in)
-            z = z_mri_general_in * 2 + z_mri_in
+            logit = self.networks['classifier'](z_mri_general + z_pet_general + z_mri + z_pet_general)
         else:
-            z = z_mri_general_in * 2
-        logit_in = self.networks['classifier_s'](z)
+            logit = self.networks['classifier'](z_mri_general + z_pet_general)
 
-        # C. Loss Aggregation
-        logit_total = torch.concat([logit_s, logit_in])
-        y_total = torch.concat([y, y_in])
+        loss_ce = self.loss_function_ce(logit, y)
+        loss_ce = loss_ce / ((y != -1).sum() + 1e-6)
 
-        loss_ce = self.loss_function_ce(logit_total, y_total)
-        loss_ce = loss_ce / ((y != -1).sum() + (y_in != -1).sum() + 1e-6)
+        # knowledge distillation
+        cos = torch.einsum('nc,nc->n', [h_mri_s, h_mri])
+        loss_kd_repr = (1 - cos) / (2 * self.config.temperature ** 2)
+        loss_kd_repr = loss_kd_repr.mean()
 
+        # 3. Loss Aggregation
         loss = self.config.alpha_ce * loss_ce + \
-               self.config.alpha_kd_repr * loss_kd_repr + \
-               self.config.alpha_kd_clf * loss_kd_clf
+               self.config.alpha_sim * loss_sim + \
+               self.config.alpha_diff * loss_diff + \
+               self.config.alpha_recon * loss_recon + \
+               self.config.alpha_kd_repr * loss_kd_repr
 
-        return loss, loss_ce, loss_kd_repr, loss_kd_clf, y_total, logit_total
+        return loss, loss_ce, loss_sim, loss_diff_specific, loss_diff_mri, loss_diff_pet, \
+               loss_recon_mri, loss_recon_pet, loss_kd_repr, y, logit
 
     @torch.no_grad()
     def evaluate(self, data_loader, adjusted=False):
@@ -374,8 +365,13 @@ class FinalMulti(object):
         steps = len(data_loader)
         result = {'total_loss': torch.zeros(steps, device=self.local_rank),
                   'loss_ce': torch.zeros(steps, device=self.local_rank),
-                  'loss_kd_repr': torch.zeros(steps, device=self.local_rank),
-                  'loss_kd_clf': torch.zeros(steps, device=self.local_rank),}
+                  'loss_sim': torch.zeros(steps, device=self.local_rank),
+                  'loss_diff_specific': torch.zeros(steps, device=self.local_rank),
+                  'loss_diff_mri': torch.zeros(steps, device=self.local_rank),
+                  'loss_diff_pet': torch.zeros(steps, device=self.local_rank),
+                  'loss_recon_mri': torch.zeros(steps, device=self.local_rank),
+                  'loss_recon_pet': torch.zeros(steps, device=self.local_rank),
+                  'loss_kd_repr': torch.zeros(steps, device=self.local_rank),}
 
         # 1. Training Teacher Model
         with get_rich_pbar(transient=True, auto_refresh=False) as pg:
@@ -385,22 +381,29 @@ class FinalMulti(object):
             y_true, y_pred = [], []
             for i, batch in enumerate(data_loader):
                 with torch.cuda.amp.autocast(False):
-                    loss, loss_ce, loss_kd_repr, loss_kd_clf, y, logit_s = self.train_step(batch, batch)
+                    loss, loss_ce, loss_sim, loss_diff_specific, loss_diff_mri, loss_diff_pet, \
+                    loss_recon_mri, loss_recon_pet, loss_kd_repr, y, logit = \
+                        self.train_step(batch)
 
                 # save monitoring values
                 result['total_loss'][i] = loss.detach()
                 result['loss_ce'][i] = loss_ce.detach()
+                result['loss_sim'][i] = loss_sim.detach()
+                result['loss_diff_specific'][i] = loss_diff_specific.detach()
+                result['loss_diff_mri'][i] = loss_diff_mri.detach()
+                result['loss_diff_pet'][i] = loss_diff_pet.detach()
+                result['loss_recon_mri'][i] = loss_recon_mri.detach()
+                result['loss_recon_pet'][i] = loss_recon_pet.detach()
                 result['loss_kd_repr'][i] = loss_kd_repr.detach()
-                result['loss_kd_clf'][i] = loss_kd_clf.detach()
 
                 if self.local_rank == 0:
                     pg.update(task, advance=1.)
                     pg.refresh()
 
                 y_true.append(y.chunk(self.test_num_slices)[0].long())
-                num_classes = logit_s.shape[-1]
-                logit_s = logit_s.reshape(self.config.num_slices, -1, num_classes).mean(0)
-                y_pred.append(logit_s)
+                num_classes = logit.shape[-1]
+                logit = logit.reshape(self.test_num_slices, -1, num_classes).mean(0)
+                y_pred.append(logit)
 
         result = {k: v.mean().item() for k, v in result.items()}
 
@@ -431,7 +434,7 @@ class FinalMulti(object):
     def _set_learning_phase(self, train: bool = True):
         # Teacher is fixed to eval mode
         for name in self.networks.keys():
-            if name.endswith('_s'):
+            if not name.endswith('_s'):
                 if train:
                     self.networks[name].train()
                 else:

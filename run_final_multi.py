@@ -11,10 +11,10 @@ import wandb
 import torch
 import torch.nn as nn
 
-from configs.slice.general_distillation import SliceGeneralDistillation
-from tasks.slice.general_distillation import GeneralDistillation
+from configs.slice.final_multi import SliceFinalMutli
+from tasks.slice.final_multi import FinalMulti
 
-from datasets.brain import BrainProcessor, BrainMulti, BrainMRI
+from datasets.brain import BrainProcessor, BrainMulti
 from datasets.slice.transforms import make_mri_transforms, make_pet_transforms
 from models.slice.build import build_networks_general_teacher
 
@@ -30,31 +30,31 @@ from copy import deepcopy
 def main():
     """Main function for single/distributed linear classification."""
 
-    config = SliceGeneralDistillation.parse_arguments()
+    config = SliceFinalMutli.parse_arguments()
 
-    teacher_file = os.path.join(config.teacher_dir, f"ckpt.{config.teacher_position}.pth.tar")
-    setattr(config, 'teacher_file', teacher_file)
+    student_file = os.path.join(config.student_dir, f"ckpt.{config.student_position}.pth.tar")
+    setattr(config, 'teacher_file', student_file)
 
-    teacher_config = os.path.join(config.teacher_dir, "configs.json")
-    with open(teacher_config, 'rb') as fb:
-        teacher_config = json.load(fb)
+    student_config = os.path.join(config.student_dir, "configs.json")
+    with open(student_config, 'rb') as fb:
+        student_config = json.load(fb)
 
     # inherit pretrained configs
-    for key in teacher_config.keys():
+    for key in student_config.keys():
         if key not in config.__dict__.keys():
             # property cannot be done
             try:
-                setattr(config, key, teacher_config[key])
+                setattr(config, key, student_config[key])
             except:
                 pass
         else:
             try:
-                setattr(config, f'{key}_t', teacher_config[key])
+                setattr(config, f'{key}_s', student_config[key])
             except:
                 pass
-    setattr(config, 'hash_t', teacher_config['hash'])
+    setattr(config, 'hash_s', student_config['hash'])
 
-    config.task = 'GeneralDistillation-' + config.pet_type.upper()
+    config.task = 'BestMulti-' + config.pet_type.upper()
 
     if config.server == 'main':
         setattr(config, 'root', 'D:/data/ADNI')
@@ -133,8 +133,6 @@ def main_worker(local_rank: int, config: argparse.Namespace):
     train_set = BrainMulti(dataset=datasets_dict['mri_pet_complete_train'],
                            mri_transform=train_transform_mri,
                            pet_transform=train_transform_pet)
-    train_mri_set = BrainMRI(dataset=datasets_dict['mri_incomplete_train'],
-                             mri_transform=train_transform_mri)
     validation_set = BrainMulti(dataset=datasets_dict['mri_pet_complete_validation'],
                                 mri_transform=test_transform_mri,
                                 pet_transform=test_transform_pet)
@@ -142,36 +140,21 @@ def main_worker(local_rank: int, config: argparse.Namespace):
                           mri_transform=test_transform_mri,
                           pet_transform=test_transform_pet)
 
-    datasets = {'train': train_set, 'train_mri': train_mri_set, 'validation': validation_set, 'test': test_set}
+    datasets = {'train': train_set, 'validation': validation_set, 'test': test_set}
 
     # Networks
-    teacher_network_names = ['extractor_mri', 'extractor_pet', 'projector_mri', 'projector_pet',
-                             'encoder_general', 'classifier']
-    student_network_names = ['extractor_mri', 'projector_mri',
-                             'encoder_general', 'classifier']
-    # if config.use_specific:
-    teacher_network_names += ['encoder_mri']
-    student_network_names += ['encoder_mri']
-
     networks = build_networks_general_teacher(config=config)
-    networks = {k: v for k, v in networks.items() if k in teacher_network_names and v is not None}
-    networks_student = {f'{k}_s': deepcopy(v) for k, v in networks.items()
-                        if k in student_network_names and v is not None}
 
-    # Load teacher / use_teacher, copy weights to student / combine dictionaries
+    # load from teacher
     for name, network in networks.items():
         network.load_weights_from_checkpoint(path=config.teacher_file, key=name)
-    for name_s, network_s in networks_student.items():
-        if config.use_teacher:
-            if name_s == 'classifier':
-                if config.inherit_classifier:
-                    network_s.load_weights_from_checkpoint(path=config.teacher_file, key=name_s.replace('_s', ''))
-                else:
-                    pass
-            else:
-                network_s.load_weights_from_checkpoint(path=config.teacher_file, key=name_s.replace('_s', ''))
-        networks[name_s] = network_s
-    del networks_student
+
+    # load from student
+    networks['mri_extractor'].load_weights_from_checkpoint(path=config.student_file, key='mri_extractor_s')
+    networks['mri_projector'].load_weights_from_checkpoint(path=config.student_file, key='mri_projector_s')
+
+    networks['mri_extractor_s'] = deepcopy(networks['mri_extractor'])
+    networks['mri_projector_s'] = deepcopy(networks['mri_projector'])
 
     # Logging
     logfile = os.path.join(config.checkpoint_dir, 'main.log')
@@ -179,7 +162,7 @@ def main_worker(local_rank: int, config: argparse.Namespace):
     if config.enable_wandb:
         wandb.init(
             name=f'{config.task} : {config.hash}',
-            project='incomplete-kd-distillation',
+            project='incomplete-final-multi',
             config=config.__dict__,
             settings=wandb.Settings(code_dir=".")
         )
@@ -194,10 +177,37 @@ def main_worker(local_rank: int, config: argparse.Namespace):
         class_weight = torch.tensor(processor.class_weight_pet, dtype=torch.float).to(local_rank)
     loss_function_ce = nn.CrossEntropyLoss(weight=class_weight, reduction='sum', ignore_index=-1)
 
+    # Similarity, Difference, and Reconstruction
+    if config.loss_sim == 'cmd':
+        loss_function_sim = SimCMDLoss(n_moments=config.n_moments)
+    elif config.loss_sim == 'cosine':
+        loss_function_sim = SimCosineLoss()
+    elif config.loss_sim == 'l2':
+        loss_function_sim = SimL2Loss()
+    elif config.loss_sim == 'mse':
+        loss_function_sim = nn.MSELoss(reduction='mean')
+    else:
+        raise ValueError
+
+    if config.loss_diff == 'cosine':
+        loss_function_diff = DiffCosineLoss()
+    elif config.loss_diff == 'fro':
+        loss_function_diff = DiffFrobeniusLoss()
+    elif config.loss_diff == 'mse':
+        loss_function_diff = DiffMSELoss()
+    else:
+        raise ValueError
+
+    loss_function_recon = nn.MSELoss(reduction='mean')
+
     # Model (Task)
-    model = GeneralDistillation(networks=networks)
+    model = FinalMulti(networks=networks)
     model.prepare(config=config,
                   loss_function_ce=loss_function_ce,
+                  loss_function_sim=loss_function_sim,
+                  loss_function_diff=loss_function_diff,
+                  loss_function_recon=loss_function_recon,
+                  swap=config.swap,
                   local_rank=local_rank)
 
     # Train & evaluate
