@@ -13,8 +13,8 @@ DIFFERENT_LR=True
 TEMPERATURE=5.0
 
 ALPHA_CE=1.0
-ALPHA_KD_CLF=10.0
-ALPHA_KD_REPR=10.0
+ALPHA_KD_CLF=100.0
+ALPHA_KD_REPR=0.0
 
 TEACHER_PRE="checkpoints/GeneralTeacher-FBP/"
 TEACHER_POSITION=last
@@ -30,7 +30,7 @@ do
   do
     for EPOCHS in 30
     do
-      for ALPHA_KD_CLF in 10.0
+      for ALPHA_KD_CLF in 100.0
       do
         for TEMPERATURE in 5.0
         do
