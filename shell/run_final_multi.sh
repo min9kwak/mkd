@@ -1,9 +1,9 @@
 echo "Experiments Started"
 SERVER=workstation3
-GPUS=3
+GPUS=5
 
-EPOCHS=30
-LEARNING_RATE=0.0001
+EPOCHS=100
+LEARNING_RATE=0.001
 COSINE_WARMUP=0
 
 BALANCE=True
@@ -13,21 +13,23 @@ DIFFERENT_LR=True
 TEMPERATURE=5.0
 
 ALPHA_CE=1.0
-ALPHA_KD_REPR=1000.0
+ALPHA_KD_REPR=100.0
 
 STUDENT_PRE="checkpoints/GeneralDistillation-FBP/"
 STUDENT_POSITION=last
 
 USE_SPECIFIC=False
+USE_TEACHER=False
+USE_STUDENT=True
 
-# "2023-06-03_04-19-11" "2023-06-10_03-29-36" "2023-06-10_03-29-57" "2023-06-10_13-28-17" "2023-06-10_14-14-27"
-for HASH in "2023-06-03_04-19-11"
+# "2023-06-18_09-50-44" "2023-06-18_06-20-15" "2023-06-18_02-19-54" "2023-06-17_22-36-08" "2023-06-21_04-19-50"
+for HASH in "2023-06-18_09-50-44"
 do
-  for LEARNING_RATE in 0.0001
+  for LEARNING_RATE in 0.001
   do
-    for EPOCHS in 30
+    for EPOCHS in 100
     do
-      for ALPHA_KD_REPR in 1000.0
+      for ALPHA_KD_REPR in 100.0
       do
         for TEMPERATURE in 5.0
         do
@@ -49,7 +51,9 @@ do
           --temperature $TEMPERATURE \
           --student_dir $STUDENT_DIR \
           --student_position $STUDENT_POSITION \
-          --use_specific $USE_SPECIFIC
+          --use_specific $USE_SPECIFIC \
+          --use_teacher $USE_TEACHER \
+          --use_student $USE_STUDENT
         done
       done
     done

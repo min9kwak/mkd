@@ -103,6 +103,7 @@ def main_worker(local_rank: int, config: argparse.Namespace):
     else:
         raise ValueError
 
+    # TODO: unlabeled data
     train_transform_mri, test_transform_mri = make_mri_transforms(
         image_size_mri=config.image_size_mri, intensity_mri=config.intensity_mri, crop_size_mri=config.crop_size_mri,
         rotate_mri=config.rotate_mri, flip_mri=config.flip_mri, affine_mri=config.affine_mri,
@@ -151,12 +152,14 @@ def main_worker(local_rank: int, config: argparse.Namespace):
                              'classifier']
     student_network_names = ['extractor_mri', 'projector_mri']
 
-    for name in teacher_network_names:
-        networks[name].load_weights_from_checkpoint(path=config.teacher_file, key=name)
+    if config.use_teacher:
+        for name in teacher_network_names:
+            networks[name].load_weights_from_checkpoint(path=config.teacher_file, key=name)
 
     for name in student_network_names:
         network = deepcopy(networks[name])
-        network.load_weights_from_checkpoint(path=config.student_file, key=name + '_s')
+        if config.use_student:
+            network.load_weights_from_checkpoint(path=config.student_file, key=name + '_s')
         networks[name + '_s'] = network
         del network
 

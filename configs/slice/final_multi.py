@@ -31,7 +31,7 @@ class SliceFinalMutli(ConfigBase):
         # Optimizer: MRI & PET
         parser.add_argument('--optimizer', type=str, default='adamw', choices=('sgd', 'adamw'),
                             help='Optimization algorithm.')
-        parser.add_argument('--learning_rate', type=float, default=0.0001, help='Base learning rate to start from.')
+        parser.add_argument('--learning_rate', type=float, default=0.001, help='Base learning rate to start from.')
         parser.add_argument('--weight_decay', type=float, default=0.0001, help='Weight decay factor.')
 
         # Scheduler
@@ -53,6 +53,8 @@ class SliceFinalMutli(ConfigBase):
         parser.add_argument('--different_lr', type=str2bool, default=False, help='apply class balance weight')
 
         parser.add_argument('--use_specific', type=str2bool, default=False)
+        parser.add_argument('--use_teacher', type=str2bool, default=False)
+        parser.add_argument('--use_student', type=str2bool, default=False)
 
         # Weight Alpha
         parser.add_argument('--alpha_ce', type=float, default=1.0)
