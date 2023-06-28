@@ -343,7 +343,10 @@ class FinalMulti(object):
         loss_ce = loss_ce / ((y != -1).sum() + 1e-6)
 
         # knowledge distillation
-        cos = torch.einsum('nc,nc->n', [h_mri_s, h_mri])
+        h_mri_s_norm = F.normalize(h_mri_s, p=2, dim=1)
+        h_mri_norm = F.normalize(h_mri, p=2, dim=1)
+
+        cos = torch.einsum('nc,nc->n', [h_mri_s_norm, h_mri_norm])
         loss_kd_repr = (1 - cos) / (2 * self.config.temperature ** 2)
         loss_kd_repr = loss_kd_repr.mean()
 
