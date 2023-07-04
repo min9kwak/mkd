@@ -46,7 +46,7 @@ ADD_TYPE=add
 
 BALANCE=True
 SAMPLER_TYPE=stratified
-DIFFERENT_LR=True
+DIFFERENT_LR=False
 
 for RANDOM_STATE in 2021
 do
