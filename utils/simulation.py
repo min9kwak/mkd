@@ -193,5 +193,3 @@ def build_general_teacher(config: argparse.Namespace or edict, **kwargs):
                     classifier=classifier)
 
     return networks
-
-
