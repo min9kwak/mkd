@@ -7,6 +7,7 @@ STR2GPU = {'00': 'MIG-f3304720-4601-5894-bee4-cd0174024e06',
            '30': 'MIG-0b2452d4-9b27-530f-a6f1-1c2d05dfaa72',
            '31': 'MIG-e46a8085-268f-5417-8e5a-a9e20578424d'}
 
+
 def set_gpu(config):
     if config.server == 'workstation2':
         gpus = ','.join([STR2GPU[str(gpu)] for gpu in config.gpus])
