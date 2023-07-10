@@ -9,11 +9,11 @@ COSINE_WARMUP=0
 BALANCE=True
 SAMPLER_TYPE=stratified
 
-DIFFERENT_LR=True
+DIFFERENT_LR=False
 TEMPERATURE=5.0
 
 ALPHA_CE=1.0
-ALPHA_KD_REPR=100.0
+ALPHA_KD_REPR=500.0
 
 STUDENT_PRE="checkpoints/GeneralDistillation-FBP/"
 STUDENT_POSITION=last
@@ -29,7 +29,7 @@ do
   do
     for EPOCHS in 100
     do
-      for ALPHA_KD_REPR in 100.0
+      for ALPHA_KD_REPR in 500.0
       do
         for TEMPERATURE in 5.0
         do
