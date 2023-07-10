@@ -373,7 +373,9 @@ class GeneralDistillation(object):
 
         steps = len(data_loader)
         result = {'total_loss': torch.zeros(steps, device=self.local_rank),
-                  'loss_ce': torch.zeros(steps, device=self.local_rank),}
+                  'loss_ce': torch.zeros(steps, device=self.local_rank),
+                  'loss_kd_repr': torch.zeros(steps, device=self.local_rank),
+                  'loss_kd_clf': torch.zeros(steps, device=self.local_rank),}
 
         # 1. Training Teacher Model
         with get_rich_pbar(transient=True, auto_refresh=False) as pg:
@@ -383,11 +385,13 @@ class GeneralDistillation(object):
             y_true, y_pred = [], []
             for i, batch in enumerate(data_loader):
                 with torch.cuda.amp.autocast(False):
-                    loss, loss_ce, y, logit_s = self.eval_step(batch)
+                    loss, loss_ce, loss_kd_repr, loss_kd_clf, y, logit_s = self.train_step(batch, batch)
 
                 # save monitoring values
                 result['total_loss'][i] = loss.detach()
                 result['loss_ce'][i] = loss_ce.detach()
+                result['loss_kd_repr'][i] = loss_kd_repr.detach()
+                result['loss_kd_clf'][i] = loss_kd_clf.detach()
 
                 if self.local_rank == 0:
                     pg.update(task, advance=1.)
@@ -411,33 +415,6 @@ class GeneralDistillation(object):
             result[k] = v
 
         return result
-
-    @torch.no_grad()
-    def eval_step(self, batch_mri):
-
-        # B. Incomplete Training. Some of them are unlabeled.
-        # input data
-        x_mri_in = torch.concat(batch_mri['mri']).float().to(self.local_rank)
-        y_in = batch_mri['y'].long().repeat(self.config.num_slices).to(self.local_rank)
-
-        # 1. Student
-        h_mri_in = self.networks['projector_mri_s'](self.networks['extractor_mri_s'](x_mri_in))
-        z_mri_general_in = self.networks['encoder_general_s'](h_mri_in)
-
-        if self.config.use_specific:
-            z_mri_in = self.networks['encoder_mri_s'](h_mri_in)
-            z = z_mri_general_in * 2 + z_mri_in
-        else:
-            z = z_mri_general_in * 2
-        logit_in = self.networks['classifier_s'](z)
-
-        # C. Loss Aggregation
-        loss_ce = self.loss_function_ce(logit_in, y_in)
-        loss_ce = loss_ce / ((y_in != -1).sum() + 1e-6)
-
-        loss = self.config.alpha_ce * loss_ce
-
-        return loss, loss_ce, y_in, logit_in
 
     @staticmethod
     def move_optimizer_states(optimizer: torch.optim.Optimizer, device: int = 0):
