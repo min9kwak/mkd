@@ -158,6 +158,7 @@ def main_worker(local_rank: int, config: argparse.Namespace):
 
     for name in student_network_names:
         network = deepcopy(networks[name])
+        # TODO: load pre-trained weights for teacher?
         if config.use_student:
             network.load_weights_from_checkpoint(path=config.student_file, key=name + '_s')
         networks[name + '_s'] = network
