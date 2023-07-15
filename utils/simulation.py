@@ -1,5 +1,6 @@
 import argparse
 import collections
+import random
 import numpy as np
 
 import torch
@@ -8,55 +9,47 @@ import torch.nn.functional as F
 from torch.utils.data import Dataset
 
 from easydict import EasyDict as edict
-from sklearn.model_selection import train_test_split
 
 from utils.initialization import initialize_weights
 
 
 # Data Generation
-def generate_data(n_train, n_test, x1_dim, x2_dim, x1_common_dim, x2_common_dim, y_dummy, missing_rate, random_state):
+def set_random_state(random_state=2021):
+    random.seed(random_state)
+    np.random.seed(random_state)
+    torch.manual_seed(random_state)
+    torch.cuda.manual_seed(random_state)
+    torch.cuda.manual_seed_all(random_state)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
-    # create y_dummxy
-    y_dummy = np.ones(y_dummy)
-    y_dummy = y_dummy[0: x1_common_dim + x2_common_dim]
 
-    # x1 and x2 share xs2_dim decisive features. assign binary labels
-    x_common = np.random.randn(n_train + n_test, x1_common_dim + x2_common_dim)
-    y = (np.dot(x_common, y_dummy) > 0).ravel()
-    y = y.astype(int)
+def create_dataset(n_train=200, n_test=1000,
+                   x1_dim=25, x2_dim=50,
+                   xs1_dim=10, xs2_dim=10, overlap_dim=10,
+                   hyperplane_dim=500,
+                   missing_rate=0.5,
+                   random_state=2021):
 
-    # x1, among all x1_dim channels, xs1_dim+xs2_dim are decisive;
-    # among xs1_dim+xs2_dim decisive channels, xs2_dim are shared
-    x1 = np.random.randn(n_train + n_test, x1_dim)
-    x1[:, 0:x1_common_dim + x2_common_dim] = x_common
+    # https://github.com/zihuixue/MFH/blob/main/gauss/main.py - exp1
+    # when gamma is large, multimodal data share many label-relevant information
+    set_random_state(random_state=random_state)
+    hyperplane = np.random.randn(hyperplane_dim)
 
-    # x2, among all x2_dim channels, xs2_dim are decisive
-    x2 = np.random.randn(n_train + n_test, x2_dim)
-    x2[:, 0:x2_common_dim] = x_common[:, 0:x2_common_dim]
+    # generate data - train
+    x1_train_complete, x2_train_complete, y_train_complete, x1_train_incomplete, y_train_incomplete = \
+        generate_mm_data(n_samples=n_train,
+                         x1_dim=x1_dim, x2_dim=x2_dim,
+                         xs1_dim=xs1_dim, xs2_dim=xs2_dim, overlap_dim=overlap_dim, hyperplane=hyperplane,
+                         missing_rate=missing_rate)
 
-    # train-test split
-    train_index, test_index = train_test_split(range(len(y)), test_size=n_test, random_state=random_state, stratify=y)
-    x1_train, x2_train, y_train = x1[train_index, :], x2[train_index, :], y[train_index]
-    x1_test, x2_test, y_test = x1[test_index, :], x2[test_index, :], y[test_index]
-
-    n_train = len(x1_train)
-
-    if missing_rate is not None:
-        assert 0 < missing_rate < 1
-        n_missing = int(n_train * missing_rate)
-        missing_index = np.random.choice(np.arange(n_train), n_missing, replace=False)
-
-        x2_train_complete = np.delete(x2_train, missing_index, axis=0)
-        x1_train_complete = np.delete(x1_train, missing_index, axis=0)
-        x1_train_incomplete = x1_train[missing_index, :]
-
-        y_train_complete = np.delete(y_train, missing_index)
-        y_train_incomplete = y_train[missing_index]
-    else:
-        x1_train_complete = x1_train
-        x2_train_complete = x2_train
-        y_train_complete = y_train
-        x1_train_incomplete, y_train_incomplete = None, None
+    # generate data - test
+    set_random_state(random_state=random_state + 365)
+    x1_test, x2_test, y_test, _, _ = \
+        generate_mm_data(n_samples=n_test,
+                         x1_dim=x1_dim, x2_dim=x2_dim,
+                         xs1_dim=xs1_dim, xs2_dim=xs2_dim, overlap_dim=overlap_dim, hyperplane=hyperplane,
+                         missing_rate=None)
 
     data = dict(
         x1_train_complete=x1_train_complete, x2_train_complete=x2_train_complete, y_train_complete=y_train_complete,
@@ -65,6 +58,50 @@ def generate_data(n_train, n_test, x1_dim, x2_dim, x1_common_dim, x2_common_dim,
     )
 
     return data
+
+
+def generate_mm_data(n_samples, x1_dim, x2_dim, xs1_dim, xs2_dim, overlap_dim, hyperplane, missing_rate):
+
+    # decisive features
+    xs = np.random.randn(n_samples, xs1_dim + xs2_dim)
+
+    # separating hyperplane
+    hyperplane = hyperplane[0:xs1_dim + xs2_dim]
+
+    # decisive featuers xs -> label y
+    y = (np.dot(xs, hyperplane) > 0).ravel()
+
+    # x2, 0:xs2_dim are decisive features, others gaussian noise
+    x2 = np.random.randn(n_samples, x2_dim)
+    x2[:, 0:xs2_dim] = xs[:, 0:xs2_dim]
+
+    # x1, among all x1_dim channels, xs1_dim channels are decisive, others gaussian noise
+    # among all xs1_dim decisive channels, overlap_dim are shared between x1 and x2
+    x1 = np.random.randn(n_samples, x1_dim)
+    x1[:, xs2_dim - overlap_dim:xs2_dim - overlap_dim + xs1_dim] = \
+        xs[:, xs2_dim - overlap_dim:xs2_dim - overlap_dim + xs1_dim]
+
+    # create incomplete dataset. x1 is large dataset
+    if missing_rate is not None:
+        assert 0 < missing_rate < 1
+        n_missing = int(n_samples * missing_rate)
+        missing_index = np.random.choice(np.arange(n_samples), n_missing, replace=False)
+
+        # x1 is a large dataset
+        x2_complete = np.delete(x2, missing_index, axis=0)
+        x1_complete = np.delete(x1, missing_index, axis=0)
+        x1_incomplete = x1[missing_index, :]
+
+        y_complete = np.delete(y, missing_index)
+        y_incomplete = y[missing_index]
+
+    else:
+        x1_complete = x1
+        x2_complete = x2
+        y_complete = y
+        x1_incomplete, y_incomplete = None, None
+
+    return x1_complete, x2_complete, y_complete, x1_incomplete, y_incomplete
 
 
 # Dataset
@@ -80,15 +117,16 @@ class MultiModalDataset(Dataset):
 
     def __getitem__(self, idx):
         x1 = self.x1[idx]
-        if self.x2 is not None:
-            x2 = self.x2[idx]
-        else:
-            x2 = None
         y = self.y[idx]
 
-        return dict(x1=x1, x2=x2, y=y)
+        if self.x2 is not None:
+            x2 = self.x2[idx]
+            return dict(x1=x1, x2=x2, y=y)
+        else:
+            return dict(x1=x1, y=y)
 
 
+# Networks
 # extractor-projector
 class Extractor(nn.Module):
     def __init__(self, in_channels: int, out_channels: int):
@@ -100,7 +138,7 @@ class Extractor(nn.Module):
             [
                 ('linear', nn.Linear(in_channels, out_channels)),
                 ('relu', nn.ReLU()),
-                # ('norm', nn.LayerNorm(out_channels))
+                ('norm', nn.LayerNorm(out_channels))
             ]
         ))
         initialize_weights(self.layers)
@@ -120,7 +158,7 @@ class Encoder(nn.Module):
         self.layers = nn.Sequential(collections.OrderedDict(
             [
                 ('linear1', nn.Linear(self.in_channels, self.out_channels)),
-                # ('norm', nn.LayerNorm(self.out_channels)),
+                ('norm', nn.LayerNorm(self.out_channels)),
                 ('relu', nn.ReLU()),
                 ('linear2', nn.Linear(self.out_channels, self.out_channels))
             ]
@@ -144,7 +182,7 @@ class Decoder(nn.Module):
             [
                 ('linear1', nn.Linear(self.in_channels, self.in_channels)),
                 ('relu', nn.ReLU()),
-                # ('norm', nn.LayerNorm(self.in_channels)),
+                ('norm', nn.LayerNorm(self.in_channels)),
                 ('linear2', nn.Linear(self.in_channels, self.out_channels))
             ]
         ))
@@ -174,9 +212,10 @@ class Classifier(nn.Module):
         return out
 
 
-def build_general_teacher(config: argparse.Namespace or edict, **kwargs):
-    extractor_1 = Extractor(in_channels=config.x1_dim, out_channels=config.hidden)
-    extractor_2 = Extractor(in_channels=config.x2_dim, out_channels=config.hidden)
+def build_networks(config: argparse.Namespace or edict, **kwargs):
+    # TODO: change x_dim to x1_dim and x2_dim
+    extractor_1 = Extractor(in_channels=config.x_dim, out_channels=config.hidden)
+    extractor_2 = Extractor(in_channels=config.x_dim, out_channels=config.hidden)
 
     encoder_1 = Encoder(in_channels=config.hidden, out_channels=config.hidden // 2)
     encoder_2 = Encoder(in_channels=config.hidden, out_channels=config.hidden // 2)
