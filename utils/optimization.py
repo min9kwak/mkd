@@ -111,7 +111,7 @@ def get_cosine_scheduler(optimizer: optim.Optimizer,
                          warmup_steps: int = 0,
                          cycles: int = 1,
                          min_lr: float = 5e-3):
-    """Configure half cosine learning rate schduler."""
+    """Configure half cosine learning rate scheduler."""
     if warmup_steps < 0:
         return None
     if cycles <= 1:
