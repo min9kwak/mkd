@@ -123,8 +123,9 @@ class ConfigSimulation(object):
     @staticmethod
     def ddp_parser() -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser("Data Distributed Training", add_help=False)
-        parser.add_argument('--gpus', type=str, nargs='+', default=None, help='')
-        parser.add_argument('--server', type=str, choices=('main', 'workstation1', 'workstation2', 'workstation3'))
+        parser.add_argument('--gpus', type=str, nargs='+', default='0', help='')
+        parser.add_argument('--server', type=str, default='main',
+                            choices=('main', 'workstation1', 'workstation2', 'workstation3'))
         parser.add_argument('--num_nodes', type=int, default=1, help='')
         parser.add_argument('--node_rank', type=int, default=0, help='')
         parser.add_argument('--dist_url', type=str, default='tcp://127.0.0.1:3500', help='')
@@ -134,11 +135,11 @@ class ConfigSimulation(object):
     @staticmethod
     def data_parser() -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser("Simulation Data", add_help=False)
-        parser.add_argument('--n_train', type=int, default=200)
+        parser.add_argument('--n_train', type=int, default=1000)
         parser.add_argument('--n_test', type=int, default=1000)
 
         parser.add_argument('--x_dim', type=int, default=50)
-        parser.add_argument('--xs_dim', type=int, default=10)
+        parser.add_argument('--xs_dim', type=int, default=20)
         # parser.add_argument('--x1_dim', type=int, default=50)
         # parser.add_argument('--x2_dim', type=int, default=50)
         # parser.add_argument('--xs1_dim', type=int, default=10)
@@ -146,7 +147,7 @@ class ConfigSimulation(object):
         parser.add_argument('--overlap_dim', type=int, default=10)
 
         parser.add_argument('--hyperplane_dim', type=int, default=500)
-        parser.add_argument('--missing_rate', type=float, default=0.5, help='-1 means None')
+        parser.add_argument('--missing_rate', type=float, default=0.2, help='-1 means None')
 
         parser.add_argument('--random_state', type=int, default=2021)
 
@@ -171,23 +172,23 @@ class ConfigSimulation(object):
         parser.add_argument('--mixed_precision', type=str2bool, default=False, help='Use float16 precision.')
 
         # train level
-        parser.add_argument('--train_level', type=int, default=2,
-                            choices=(0, 1, 2),
-                            help='0: teacher, 1: teacher+kd, 2: teacher+kd+final')
+        parser.add_argument('--train_level', type=int, default=3,
+                            choices=(0, 1, 2, 3),
+                            help='0: student from scratch, 1: teacher, 2: teacher+kd, 3: teacher+kd+final')
 
         # teacher
-        parser.add_argument('--epochs_teacher', type=int, default=1000, help='Number of training epochs.')
-        parser.add_argument('--learning_rate_teacher', type=float, default=0.1, help='Base learning rate to start from.')
+        parser.add_argument('--epochs_teacher', type=int, default=100, help='Number of training epochs.')
+        parser.add_argument('--learning_rate_teacher', type=float, default=0.001, help='Base learning rate to start from.')
         parser.add_argument('--weight_decay_teacher', type=float, default=0.0001, help='Weight decay factor.')
 
         # teacher
         parser.add_argument('--epochs_kd', type=int, default=10, help='Number of training epochs.')
-        parser.add_argument('--learning_rate_kd', type=float, default=0.01, help='Base learning rate to start from.')
+        parser.add_argument('--learning_rate_kd', type=float, default=0.0001, help='Base learning rate to start from.')
         parser.add_argument('--weight_decay_kd', type=float, default=0.0001, help='Weight decay factor.')
 
         # teacher
-        parser.add_argument('--epochs_final', type=int, default=1000, help='Number of training epochs.')
-        parser.add_argument('--learning_rate_final', type=float, default=0.1, help='Base learning rate to start from.')
+        parser.add_argument('--epochs_final', type=int, default=100, help='Number of training epochs.')
+        parser.add_argument('--learning_rate_final', type=float, default=0.001, help='Base learning rate to start from.')
         parser.add_argument('--weight_decay_final', type=float, default=0.0001, help='Weight decay factor.')
 
         return parser

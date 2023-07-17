@@ -6,6 +6,8 @@ import pickle
 import tqdm
 import wandb
 
+from itertools import cycle
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -72,70 +74,103 @@ class Simulator:
                                shuffle=False, drop_last=False)
         }
         # 0. TODO: student from scratch
+        # if self.config.train_level == 0
 
         # 1. General Teacher
-        self.train_mode = 'teacher'
-        self.train_params = self.config.train_params[self.train_mode]
-        self.create_network_optimizer(train_mode=self.train_mode, train_params=self.train_params)
+        # TODO: log learning_rate
+        if self.config.train_level >= 1:
+            self.train_mode = 'teacher'
+            self.train_params = self.config.train_params[self.train_mode]
+            self.create_network_optimizer(train_mode=self.train_mode, train_params=self.train_params)
 
-        # train
-        with get_rich_pbar(transient=True, auto_refresh=False) as pg:
-            task = pg.add_task(f"[bold red] Training Teacher...")
-            for epoch in range(1, self.train_params['epochs'] + 1):
-                self.epoch = epoch
-                train_history = self.train_teacher(loaders['train_complete'], train=True, adjusted=False)
-                with torch.no_grad():
-                    test_history = self.train_teacher(loaders['test'], train=False, adjusted=False)
+            # train
+            with get_rich_pbar(transient=True, auto_refresh=False) as pg:
+                task = pg.add_task(f"[bold red] Training Teacher...")
+                for epoch in range(1, self.train_params['epochs'] + 1):
+                    self.epoch = epoch
+                    train_history = self.train_teacher(loaders['train_complete'], train=True, adjusted=False)
+                    with torch.no_grad():
+                        test_history = self.train_teacher(loaders['test'], train=False, adjusted=False)
 
-                epoch_history = self.make_epoch_history(train_history=train_history,
-                                                        test_history=test_history,
-                                                        adjusted=False)
-                if self.config.enable_wandb:
-                    wandb.log(epoch_history)
-                if self.save_log:
-                    self.logs[self.train_mode][epoch] = epoch_history
-                desc = f"[bold green] Training Teacher... Epoch {self.epoch} / {self.train_params['epochs']}"
-                pg.update(task, advance=1.0, description=desc)
-                pg.refresh()
+                    epoch_history = self.make_epoch_history(train_history=train_history,
+                                                            test_history=test_history,
+                                                            adjusted=False)
 
-        # last & adjusted
-        with torch.no_grad():
-            adjusted_history = self.train_teacher(loaders['test'], train=False, adjusted=True)
-        adjusted_history = self.make_epoch_history(train_history=None,
-                                                   test_history=adjusted_history,
-                                                   adjusted=True)
-        if self.config.enable_wandb:
-            wandb.log(adjusted_history)
-        if self.save_log:
-            self.logs[self.train_mode]['adjusted'] = adjusted_history
+                    if self.config.enable_wandb:
+                        wandb.log({'epoch_teacher': epoch}, commit=False)
+                        if self.scheduler is not None:
+                            wandb.log({'lr_teacher': self.scheduler.get_last_lr()[0]}, commit=False)
+                        else:
+                            wandb.log({'lr_teacher': self.optimizer.param_groups[0]['lr']}, commit=False)
+                        wandb.log(epoch_history)
 
-        # save network
-        self.networks_teacher = copy.deepcopy(self.networks)
+                    if self.save_log:
+                        self.logs[self.train_mode][epoch] = epoch_history
+
+                    desc = f"[bold green] Training Teacher... Epoch {self.epoch} / {self.train_params['epochs']}"
+                    pg.update(task, advance=1.0, description=desc)
+                    pg.refresh()
+
+                    # update learning rate
+                    if self.scheduler is not None:
+                        self.scheduler.step()
+            del pg
+
+            # last & adjusted
+            with torch.no_grad():
+                adjusted_history = self.train_teacher(loaders['test'], train=False, adjusted=True)
+            adjusted_history = self.make_epoch_history(train_history=None,
+                                                       test_history=adjusted_history,
+                                                       adjusted=True)
+            if self.config.enable_wandb:
+                wandb.log(adjusted_history)
+            if self.save_log:
+                self.logs[self.train_mode]['adjusted'] = adjusted_history
+
+            # save network
+            self.networks_teacher = copy.deepcopy(self.networks)
 
         # 2. Knowledge Distillation
-        if self.config.train_level >= 1:
+        if self.config.train_level >= 2:
             self.train_mode = 'kd'
             self.train_params = self.config.train_params[self.train_mode]
             self.create_network_optimizer(train_mode=self.train_mode, train_params=self.train_params)
 
             # train
-            for epoch in tqdm.tqdm(range(1, self.train_params['epochs'] + 1),
-                                   total=max(len(loaders['train_complete']), len(loaders['train_incomplete'])),
-                                   desc='Training KD'):
-                train_history = self.train_kd(loaders['train_complete'],
-                                              loaders['train_incomplete'],
-                                              train=True,
-                                              adjusted=False)
-                with torch.no_grad():
-                    test_history = self.train_kd(loaders['test'], loaders['test'], train=False, adjusted=False)
+            with get_rich_pbar(transient=True, auto_refresh=False) as pg:
+                task = pg.add_task(f"[bold red] Training KD...")
+                for epoch in tqdm.tqdm(range(1, self.train_params['epochs'] + 1),
+                                       total=max(len(loaders['train_complete']), len(loaders['train_incomplete'])),
+                                       desc='Training KD'):
+                    self.epoch = epoch
+                    train_history = self.train_kd(loaders['train_complete'],
+                                                  loaders['train_incomplete'],
+                                                  train=True,
+                                                  adjusted=False)
+                    with torch.no_grad():
+                        test_history = self.train_kd(loaders['test'], loaders['test'], train=False, adjusted=False)
 
-                epoch_history = self.make_epoch_history(train_history=train_history,
-                                                        test_history=test_history,
-                                                        adjusted=False)
-                if self.config.enable_wandb:
-                    wandb.log(epoch_history)
-                if self.save_log:
-                    self.logs[self.train_mode][epoch] = epoch_history
+                    epoch_history = self.make_epoch_history(train_history=train_history,
+                                                            test_history=test_history,
+                                                            adjusted=False)
+                    if self.config.enable_wandb:
+                        wandb.log({'epoch_kd': epoch}, commit=False)
+                        if self.scheduler is not None:
+                            wandb.log({'lr_kd': self.scheduler.get_last_lr()[0]}, commit=False)
+                        else:
+                            wandb.log({'lr_kd': self.optimizer.param_groups[0]['lr']}, commit=False)
+                        wandb.log(epoch_history)
+
+                    if self.save_log:
+                        self.logs[self.train_mode][epoch] = epoch_history
+                    desc = f"[bold green] Training KD... Epoch {self.epoch} / {self.train_params['epochs']}"
+                    pg.update(task, advance=1.0, description=desc)
+                    pg.refresh()
+
+                    # update learning rate
+                    if self.scheduler is not None:
+                        self.scheduler.step()
+            del pg
 
             # last & adjusted
             with torch.no_grad():
@@ -152,25 +187,44 @@ class Simulator:
             self.networks_kd = self.networks
 
         # 3. Final Multi-Modal
-        if self.config.train_level == 2:
+        if self.config.train_level == 3:
             self.train_mode = 'final'
             self.train_params = self.config.train_params[self.train_mode]
             self.create_network_optimizer(train_mode=self.train_mode, train_params=self.train_params)
 
-            for epoch in tqdm.tqdm(range(1, self.train_params['epochs'] + 1), total=len(loaders['train_complete']),
-                                   desc='Training Final'):
-                train_history = self.train_final(loaders['train_complete'], train=True, adjusted=False)
-                with torch.no_grad():
-                    test_history = self.train_final(loaders['test'], train=False, adjusted=False)
+            # train
+            with get_rich_pbar(transient=True, auto_refresh=False) as pg:
+                task = pg.add_task(f"[bold red] Training Final...")
+                for epoch in tqdm.tqdm(range(1, self.train_params['epochs'] + 1), total=len(loaders['train_complete']),
+                                       desc='Training Final'):
+                    self.epoch = epoch
+                    train_history = self.train_final(loaders['train_complete'], train=True, adjusted=False)
+                    with torch.no_grad():
+                        test_history = self.train_final(loaders['test'], train=False, adjusted=False)
 
-                epoch_history = self.make_epoch_history(train_history=train_history,
-                                                        test_history=test_history,
-                                                        adjusted=False)
-                if self.config.enable_wandb:
-                    wandb.log(epoch_history)
-                if self.save_log:
-                    self.logs[self.train_mode][epoch] = epoch_history
+                    epoch_history = self.make_epoch_history(train_history=train_history,
+                                                            test_history=test_history,
+                                                            adjusted=False)
+                    if self.config.enable_wandb:
+                        wandb.log({'epoch_final': epoch}, commit=False)
+                        if self.scheduler is not None:
+                            wandb.log({'lr_final': self.scheduler.get_last_lr()[0]}, commit=False)
+                        else:
+                            wandb.log({'lr_final': self.optimizer.param_groups[0]['lr']}, commit=False)
+                        wandb.log(epoch_history)
 
+                    if self.save_log:
+                        self.logs[self.train_mode][epoch] = epoch_history
+                    desc = f"[bold green] Training Final... Epoch {self.epoch} / {self.train_params['epochs']}"
+                    pg.update(task, advance=1.0, description=desc)
+                    pg.refresh()
+
+                    # update learning rate
+                    if self.scheduler is not None:
+                        self.scheduler.step()
+            del pg
+
+            # last & adjusted
             with torch.no_grad():
                 adjusted_history = self.train_final(loaders['test'], train=False, adjusted=True)
             adjusted_history = self.make_epoch_history(train_history=None,
@@ -280,15 +334,29 @@ class Simulator:
     def train_kd(self, data_complete_loader, data_incomplete_loader, train=True, adjusted=False):
 
         self._set_learning_phase(train=train, train_mode='kd')
-        steps = min(len(data_complete_loader), len(data_incomplete_loader))
+        steps = max(len(data_complete_loader), len(data_incomplete_loader))
         metric_names = ['total_loss', 'loss_ce', 'loss_kd']
         result = {k: torch.zeros(steps, device=self.local_rank) for k in metric_names}
 
+        # use cycle to extend short loader to be equal to long loader
+        if len(data_complete_loader) >= len(data_incomplete_loader):
+            complete_is_long = True
+            long_loader, short_loader = data_complete_loader, data_incomplete_loader
+        else:
+            complete_is_long = False
+            long_loader, short_loader = data_incomplete_loader, data_incomplete_loader
+        short_loader_cycle = cycle(short_loader)
+
         y_true, y_pred = [], []
-        # TODO: main iterator should be complete loader?
-        for i, (batch_c, batch_ic) in enumerate(zip(data_complete_loader, data_incomplete_loader)):
+
+        for i, (batch_l, batch_s) in enumerate(zip(long_loader, short_loader_cycle)):
+            if complete_is_long:
+                batch_c, batch_ic = batch_l, batch_s
+            else:
+                batch_c, batch_ic = batch_s, batch_l
             loss, loss_ce, loss_kd, y, logit = self.train_kd_step(batch_c, batch_ic)
-            self.update(loss)
+            if train:
+                self.update(loss)
 
             result['total_loss'][i] = loss.detach()
             result['loss_ce'][i] = loss_ce.detach()
@@ -337,7 +405,7 @@ class Simulator:
         # classification
         loss_kd_clf = F.kl_div(F.log_softmax(logit_s / self.config.temperature, dim=1),
                                F.softmax(logit / self.config.temperature, dim=1),
-                               reduction='mean')
+                               reduction='batchmean')
 
         # B. Incomplete Training
         x1_in = batch_in['x1'].float().to(self.local_rank)
