@@ -102,12 +102,12 @@ class ConfigSimulation(object):
     @staticmethod
     def task_specific_parser() -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser("Simulation Task", add_help=False)
-        parser.add_argument('--alpha_ce', type=float, default=1.0)
-        parser.add_argument('--alpha_sim', type=float, default=10.0)
+        parser.add_argument('--alpha_ce', type=float, default=10.0)
+        parser.add_argument('--alpha_sim', type=float, default=5.0)
         parser.add_argument('--alpha_diff', type=float, default=5.0)
-        parser.add_argument('--alpha_recon', type=float, default=0.1)
+        parser.add_argument('--alpha_recon', type=float, default=100.0)
         parser.add_argument('--alpha_kd_clf', type=float, default=100.0)
-        parser.add_argument('--alpha_kd_repr', type=float, default=500.0)
+        parser.add_argument('--alpha_kd_repr', type=float, default=100.0)
 
         parser.add_argument('--temperature', type=float, default=5.0)
 
@@ -124,7 +124,7 @@ class ConfigSimulation(object):
     def ddp_parser() -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser("Data Distributed Training", add_help=False)
         parser.add_argument('--gpus', type=str, nargs='+', default='0', help='')
-        parser.add_argument('--server', type=str, default='main',
+        parser.add_argument('--server', type=str, default='workstation2',
                             choices=('main', 'workstation1', 'workstation2', 'workstation3'))
         parser.add_argument('--num_nodes', type=int, default=1, help='')
         parser.add_argument('--node_rank', type=int, default=0, help='')
@@ -175,6 +175,12 @@ class ConfigSimulation(object):
         parser.add_argument('--train_level', type=int, default=3,
                             choices=(0, 1, 2, 3),
                             help='0: student from scratch, 1: teacher, 2: teacher+kd, 3: teacher+kd+final')
+
+        # scratch: use default
+        parser.add_argument('--epochs_scratch', type=int, default=30, help='Number of training epochs.')
+        parser.add_argument('--learning_rate_scratch', type=float, default=0.0001,
+                            help='Base learning rate to start from.')
+        parser.add_argument('--weight_decay_scratch', type=float, default=0.0001, help='Weight decay factor.')
 
         # teacher
         parser.add_argument('--epochs_teacher', type=int, default=100, help='Number of training epochs.')
