@@ -15,13 +15,12 @@ from configs.simulation import ConfigSimulation
 from tasks.simulation.simulator import Simulator
 from utils.simulation import create_dataset, MultiModalDataset
 
-from utils.loss import SimCosineLoss, SimCMDLoss, SimL2Loss
-from utils.loss import DiffCosineLoss, DiffFrobeniusLoss, DiffMSELoss
+from utils.loss import SimCosineLoss
+from utils.loss import DiffCosineLoss
 from utils.logging import get_rich_logger
 from utils.gpu import set_gpu
 
 import argparse
-from copy import deepcopy
 
 
 def main():
@@ -84,8 +83,15 @@ def main_worker(local_rank: int, config: argparse.Namespace):
     test_set = MultiModalDataset(x1=dataset['x1_test'],
                                  x2=dataset['x2_test'],
                                  y=dataset['y_test'])
+
+    # dataset for scratch
+    x1_total = np.concatenate([dataset['x1_train_complete'], dataset['x1_train_incomplete']], axis=0)
+    y_total = np.concatenate([dataset['y_train_complete'], dataset['y_train_incomplete']], axis=0)
+    train_total_set = MultiModalDataset(x1=x1_total, x2=None, y=y_total)
+
     datasets = {'train_complete': train_complete_set,
                 'train_incomplete': train_incomplete_set,
+                'train_total': train_total_set,
                 'test': test_set}
 
     # Logging
@@ -104,6 +110,9 @@ def main_worker(local_rank: int, config: argparse.Namespace):
 
     # create train_params
     train_params = {
+        'scratch': {'epochs': config.epochs_scratch,
+                    'learning_rate': config.learning_rate_scratch,
+                    'weight_decay': config.weight_decay_scratch},
         'teacher': {'epochs': config.epochs_teacher,
                     'learning_rate': config.learning_rate_teacher,
                     'weight_decay': config.weight_decay_teacher},

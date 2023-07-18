@@ -24,6 +24,7 @@ class Simulator:
     def __init__(self):
 
         self.networks = None
+        self.networks_scratch = None
         self.networks_teacher = None
         self.networks_kd = None
         self.optimizer = None
@@ -70,17 +71,66 @@ class Simulator:
                                          shuffle=True, drop_last=True),
             'train_incomplete': DataLoader(dataset=datasets['train_incomplete'], batch_size=self.batch_size,
                                            shuffle=True, drop_last=True),
+            'train_total': DataLoader(dataset=datasets['train_total'], batch_size=self.batch_size,
+                                      shuffle=True, drop_last=True),
             'test': DataLoader(dataset=datasets['test'], batch_size=self.batch_size,
                                shuffle=False, drop_last=False)
         }
-        # 0. TODO: student from scratch
-        # if self.config.train_level == 0
+        # 0. Student from scratch
+        if self.config.train_level >= 0:
+            self.train_mode = 'scratch'
+            self.train_params = copy.deepcopy(self.config.train_params[self.train_mode])
+            self.create_network_optimizer(train_mode=self.train_mode, train_params=self.train_params)
+
+            # train
+            with get_rich_pbar(transient=True, auto_refresh=False) as pg:
+                task = pg.add_task(f"[bold red] Training Scratch...")
+                for epoch in range(1, self.train_params['epochs'] + 1):
+                    self.epoch = epoch
+                    train_history = self.train_scratch(loaders['train_total'], train=True, adjusted=False)
+                    with torch.no_grad():
+                        test_history = self.train_scratch(loaders['test'], train=False, adjusted=False)
+
+                    epoch_history = self.make_epoch_history(train_history=train_history,
+                                                            test_history=test_history,
+                                                            adjusted=False)
+                    if self.config.enable_wandb:
+                        wandb.log({'epoch_scratch': epoch}, commit=False)
+                        if self.scheduler is not None:
+                            wandb.log({'lr_scratch': self.scheduler.get_last_lr()[0]}, commit=False)
+                        else:
+                            wandb.log({'lr_scratch': self.optimizer.param_groups[0]['lr']}, commit=False)
+                        wandb.log(epoch_history)
+
+                    if self.save_log:
+                        self.logs[self.train_mode][epoch] = epoch_history
+                    desc = f"[bold green] Training Scratch... Epoch {self.epoch} / {self.train_params['epochs']}"
+                    pg.update(task, advance=1.0, description=desc)
+                    pg.refresh()
+
+                    # update learning rate
+                    if self.scheduler is not None:
+                        self.scheduler.step()
+            del pg
+
+            # last & adjusted
+            with torch.no_grad():
+                adjusted_history = self.train_scratch(loaders['test'], train=False, adjusted=True)
+            adjusted_history = self.make_epoch_history(train_history=None,
+                                                       test_history=adjusted_history,
+                                                       adjusted=True)
+            if self.config.enable_wandb:
+                wandb.log(adjusted_history)
+            if self.save_log:
+                self.logs[self.train_mode]['adjusted'] = adjusted_history
+
+            # save network
+            self.networks_scratch = self.networks
 
         # 1. General Teacher
-        # TODO: log learning_rate
         if self.config.train_level >= 1:
             self.train_mode = 'teacher'
-            self.train_params = self.config.train_params[self.train_mode]
+            self.train_params = copy.deepcopy(self.config.train_params[self.train_mode])
             self.create_network_optimizer(train_mode=self.train_mode, train_params=self.train_params)
 
             # train
@@ -133,7 +183,7 @@ class Simulator:
         # 2. Knowledge Distillation
         if self.config.train_level >= 2:
             self.train_mode = 'kd'
-            self.train_params = self.config.train_params[self.train_mode]
+            self.train_params = copy.deepcopy(self.config.train_params[self.train_mode])
             self.create_network_optimizer(train_mode=self.train_mode, train_params=self.train_params)
 
             # train
@@ -189,7 +239,7 @@ class Simulator:
         # 3. Final Multi-Modal
         if self.config.train_level == 3:
             self.train_mode = 'final'
-            self.train_params = self.config.train_params[self.train_mode]
+            self.train_params = copy.deepcopy(self.config.train_params[self.train_mode])
             self.create_network_optimizer(train_mode=self.train_mode, train_params=self.train_params)
 
             # train
@@ -239,6 +289,51 @@ class Simulator:
         if self.save_log:
             with open(os.path.join(self.config.checkpoint_dir, 'logs.pkl'), 'wb') as fb:
                 pickle.dump(self.logs, fb)
+
+    def train_scratch(self, data_loader, train=True, adjusted=False):
+
+        self._set_learning_phase(train=train, train_mode='scratch')
+        steps = len(data_loader)
+        metric_names = ['total_loss', 'loss_ce']
+        result = {k: torch.zeros(steps, device=self.local_rank) for k in metric_names}
+
+        y_true, y_pred = [], []
+        for i, batch in enumerate(data_loader):
+            loss, loss_ce, y, logit = self.train_scratch_step(batch)
+            if train:
+                self.update(loss)
+            result['total_loss'] = loss.detach()
+            result['loss_ce'] = loss_ce.detach()
+
+            y_true.append(y)
+            y_pred.append(logit)
+
+        result = {k: v.mean().item() for k, v in result.items()}
+
+        # enforce to float32: accuracy and macro f1 score
+        y_true = torch.cat(y_true, dim=0)
+        y_pred = torch.cat(y_pred, dim=0).to(torch.float32)
+
+        clf_result = classification_result(y_true=y_true.cpu().numpy(),
+                                           y_pred=y_pred.softmax(1).detach().cpu().numpy(),
+                                           adjusted=adjusted)
+        for k, v in clf_result.items():
+            result[k] = v
+
+        return result
+
+    def train_scratch_step(self, batch):
+        x1 = batch['x1'].float().to(self.local_rank)
+        y = batch['y'].long().to(self.local_rank)
+
+        h1 = self.networks['extractor_1_s'](x1)
+        z1 = self.networks['encoder_general_s'](h1)
+        logit = self.networks['classifier_s'](z1 * 2)
+
+        loss_ce = self.loss_function_ce(logit, y)
+        loss = self.config.alpha_ce * loss_ce
+
+        return loss, loss_ce, y, logit
 
     def train_teacher(self, data_loader, train=True, adjusted=False):
 
@@ -538,7 +633,7 @@ class Simulator:
 
     def create_network_optimizer(self, train_mode, train_params: dict):
 
-        assert train_mode in ['teacher', 'kd', 'final']
+        assert train_mode in ['scratch', 'teacher', 'kd', 'final']
         epochs = train_params['epochs']
         learning_rate = train_params['learning_rate']
         weight_decay = train_params['weight_decay']
@@ -552,7 +647,13 @@ class Simulator:
         }
 
         params = []
-        if train_mode == 'teacher':
+        if train_mode == 'scratch':
+            # use only student network
+            self.networks = copy.deepcopy(networks_student)
+            for name in self.networks.keys():
+                params = params + [{'params': self.networks[name].parameters(), 'lr': learning_rate}]
+
+        elif train_mode == 'teacher':
             # use only general_teacher network
             self.networks = copy.deepcopy(networks)
             for name in self.networks.keys():
@@ -625,7 +726,13 @@ class Simulator:
             p.requires_grad = not freeze
 
     def _set_learning_phase(self, train: bool = True, train_mode: str = 'teacher'):
-        if train_mode == 'teacher':
+        if train_mode == 'scratch':
+            for name, network in self.networks.items():
+                if train:
+                    network.train()
+                else:
+                    network.eval()
+        elif train_mode == 'teacher':
             for name, network in self.networks.items():
                 if train:
                     network.train()

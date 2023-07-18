@@ -232,3 +232,11 @@ def build_networks(config: argparse.Namespace or edict, **kwargs):
                     classifier=classifier)
 
     return networks
+
+
+if __name__ == 'main':
+    dataset = create_dataset(n_train=1000, n_test=1000, x1_dim=50, x2_dim=50, xs1_dim=20, xs2_dim=20,
+                             overlap_dim=15, hyperplane_dim=500, missing_rate=0.3, random_state=2021)
+
+
+
