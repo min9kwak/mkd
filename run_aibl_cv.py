@@ -170,8 +170,9 @@ def main_worker(local_rank: int, config: argparse.Namespace):
     # student networks
     architectures = build_networks_general_teacher(config=config)
     student_network_names = ['extractor_mri', 'projector_mri', 'encoder_general', 'classifier']
-    networks = {f'{k}_s': copy.deepcopy(v) for k, v in architectures.items()
-                if f'{k}_s' in student_network_names}
+    networks = {}
+    for name in student_network_names:
+        networks[f'{name}_s'] = copy.deepcopy(architectures[name])
     for name, network in networks.items():
         network.load_weights_from_checkpoint(path=config.student_file, key=name)
     del architectures
