@@ -85,38 +85,41 @@ def main():
     else:
         rich.print(f"Single GPU training.")
 
-        y_true_final, y_pred_final = [], []
-        for n_cv in range(config.n_splits):
-            # single machine, single gpu
-            setattr(config, 'n_cv', n_cv)
-            y_true, y_pred = main_worker(0, config=config)
-            y_true_final.append(y_true)
-            y_pred_final.append(y_pred)
+        if config.train_mode == 'train':
+            y_true_final, y_pred_final = [], []
+            for n_cv in range(config.n_splits):
+                # single machine, single gpu
+                setattr(config, 'n_cv', n_cv)
+                y_true, y_pred = main_worker(0, config=config)
+                y_true_final.append(y_true)
+                y_pred_final.append(y_pred)
 
-        y_true_final = torch.cat(y_true_final, dim=0)
-        y_pred_final = torch.cat(y_pred_final, dim=0).to(torch.float32)
+            y_true_final = torch.cat(y_true_final, dim=0)
+            y_pred_final = torch.cat(y_pred_final, dim=0).to(torch.float32)
 
-        clf_result = classification_result(y_true=y_true_final.numpy(),
-                                           y_pred=y_pred_final.softmax(1).numpy(),
-                                           adjusted=False)
-        clf_result_adj = classification_result(y_true=y_true_final.numpy(),
+            clf_result = classification_result(y_true=y_true_final.numpy(),
                                                y_pred=y_pred_final.softmax(1).numpy(),
-                                               adjusted=True)
+                                               adjusted=False)
+            clf_result_adj = classification_result(y_true=y_true_final.numpy(),
+                                                   y_pred=y_pred_final.softmax(1).numpy(),
+                                                   adjusted=True)
 
-        final_history = collections.defaultdict(dict)
-        # TODO: final-{suffix}
-        for k, v in clf_result.items():
-            final_history[f'adjusted-plain/{k}'] = v
-        for k, v in clf_result_adj.items():
-            final_history[f'adjusted-adjusted/{k}'] = v
+            final_history = collections.defaultdict(dict)
+            # TODO: final-{suffix}
+            for k, v in clf_result.items():
+                final_history[f'adjusted-plain/{k}'] = v
+            for k, v in clf_result_adj.items():
+                final_history[f'adjusted-adjusted/{k}'] = v
 
-        if config.enable_wandb:
-            wandb.init(
-                name=f'{config.task} : {config.hash} : final',
-                project=f'incomplete-kd-{config.task}',
-                config=config.__dict__
-            )
-            wandb.log(final_history)
+            if config.enable_wandb:
+                wandb.init(
+                    name=f'{config.task} : {config.hash} : final',
+                    project=f'incomplete-kd-{config.task}',
+                    config=config.__dict__
+                )
+                wandb.log(final_history)
+        else:
+            main_worker(0, config=config)
 
 
 def main_worker(local_rank: int, config: argparse.Namespace):

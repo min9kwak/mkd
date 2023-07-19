@@ -132,14 +132,14 @@ class AIBLCV(object):
                         continue
 
                 # Write logs
-                log = make_epoch_description(
-                    history=epoch_history,
-                    current=epoch,
-                    total=epochs,
-                    best=best_epoch,
-                )
-                if logger is not None:
-                    logger.info(log)
+                # log = make_epoch_description(
+                #     history=epoch_history,
+                #     current=epoch,
+                #     total=epochs,
+                #     best=best_epoch,
+                # )
+                # if logger is not None:
+                #     logger.info(log)
 
                 if self.enable_wandb:
                     wandb.log({'epoch': epoch}, commit=False)
@@ -184,14 +184,14 @@ class AIBLCV(object):
                 epoch_history[k]['test'] = v1
 
             # Write logs
-            log = make_epoch_description(
-                history=epoch_history,
-                current=epoch,
-                total=epochs,
-                best=best_epoch,
-            )
-            if logger is not None:
-                logger.info(log)
+            # log = make_epoch_description(
+            #     history=epoch_history,
+            #     current=epoch,
+            #     total=epochs,
+            #     best=best_epoch,
+            # )
+            # if logger is not None:
+            #     logger.info(log)
 
             if self.enable_wandb:
                 wandb.log({'epoch': epoch}, commit=False)

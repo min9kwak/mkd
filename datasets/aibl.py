@@ -114,7 +114,7 @@ class AIBLDataset(Dataset):
 if __name__ == '__main__':
 
     processor = AIBLProcessor(root='D:/data/AIBL',
-                              data_info='data_info.csv',
+                              data_info='data_info_mri.csv',
                               time_window=36,
                               random_state=2021)
     datasets = processor.process(5, 0, test_only=False)
