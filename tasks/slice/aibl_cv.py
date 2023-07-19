@@ -18,14 +18,12 @@ from utils.optimization import get_cosine_scheduler
 
 class AIBLCV(object):
     def __init__(self,
-                 backbone: nn.Module,
-                 classifier: nn.Module,
+                 networks: dict,
                  config: argparse.Namespace
                  ):
 
         # network
-        self.backbone = backbone
-        self.classifier = classifier
+        self.networks = networks
 
         # optimizer
         self.scaler = None
@@ -44,8 +42,9 @@ class AIBLCV(object):
                 **kwargs):  # pylint: disable=unused-argument
 
         # Set attributes
-        self.checkpoint_dir = self.config.checkpoint_dir
         self.loss_function = loss_function
+
+        self.checkpoint_dir = self.config.checkpoint_dir
         self.epochs = self.config.epochs
         self.batch_size = self.config.batch_size
         self.num_workers = self.config.num_workers
@@ -53,23 +52,28 @@ class AIBLCV(object):
         self.mixed_precision = self.config.mixed_precision
         self.enable_wandb = self.config.enable_wandb
 
-        # Distributed training (optional)
+        if self.config.train_slices == 'random':
+            self.test_num_slices = 3
+        elif self.config.train_slices == 'fixed':
+            # Use all slices for test
+            self.test_num_slices = self.config.num_slices
+        elif self.config.train_slices in ['sagittal', 'coronal', 'axial']:
+            self.test_num_slices = 1
+        else:
+            raise ValueError
+
         if self.config.distributed:
             raise NotImplementedError
         else:
-            self.backbone.to(self.local_rank)
-            self.classifier.to(self.local_rank)
+            _ = [v.to(self.local_rank) for k, v in self.networks.items()]
 
         # Optimization
-        self.optimizer = get_optimizer(
-            params=[
-                {'params': self.backbone.parameters()},
-                {'params': self.classifier.parameters()},
-            ],
-            name=self.config.optimizer,
-            lr=self.config.learning_rate,
-            weight_decay=self.config.weight_decay
-        )
+        params = []
+        for name in self.networks.keys():
+            params = params + [{'params': self.networks[name].parameters(),
+                                'lr': self.config.learning_rate}]
+        self.optimizer = get_optimizer(params=params, name=self.config.optimizer,
+                                       lr=self.config.learning_rate, weight_decay=self.config.weight_decay)
         self.scheduler = get_cosine_scheduler(
             self.optimizer,
             epochs=self.epochs,
@@ -85,7 +89,7 @@ class AIBLCV(object):
     def run(self,
             train_set: torch.utils.data.Dataset,
             test_set: torch.utils.data.Dataset,
-            save_every: int = 10,
+            save_every: int = 1000,
             **kwargs):
 
         epochs = self.epochs
@@ -110,9 +114,6 @@ class AIBLCV(object):
         # Supervised training
         best_eval_loss = float('inf')
         best_epoch = 0
-
-        if (self.enable_wandb) and (train_set is not None):
-            wandb.watch([self.backbone, self.classifier], log='all', log_freq=len(train_loader))
 
         if self.config.train_mode == 'train':
             for epoch in range(1, epochs + 1):
@@ -219,12 +220,11 @@ class AIBLCV(object):
             wandb.log(log_history)
 
         del train_loader, test_loader
-        self.backbone = None
-        self.classifier = None
+        self.networks = None
 
         return y_true.detach().cpu(), y_pred.detach().cpu()
 
-    def train(self, data_loader):
+    def train(self, data_loader, train=True):
         """Training defined for a single epoch."""
 
         steps = len(data_loader)
@@ -241,19 +241,20 @@ class AIBLCV(object):
             y_true, y_pred = [], []
             for i, batch in enumerate(data_loader):
                 with torch.cuda.amp.autocast(self.mixed_precision):
-                    x = batch['x'].float().to(self.local_rank)
-                    y = batch['y'].to(self.local_rank)
-                    logits = self.classifier(self.backbone(x))
-                    loss = self.loss_function(logits, y.long())
-                    if self.scaler is not None:
-                        self.scaler.scale(loss).backward()
-                        self.scaler.step(self.optimizer)
-                        self.scaler.update()
-                    else:
-                        loss.backward()
-                        self.optimizer.step()
-                    self.optimizer.zero_grad()
+                    x = torch.concat(batch['x']).float().to(self.local_rank)
+                    y = batch['y'].long().repeat(self.config.num_slices).to(self.local_rank)
+
+                    h = self.networks['projector_mri_s'](self.networks['extractor_mri_s'](x))
+                    z = self.networks['encoder_general_s'](h)
+                    logit = self.networks['classifier_s'](z * 2)
+
+                    loss = self.loss_function(logit, y)
+
+                    if train:
+                        self.update(loss)
+
                 result['loss'][i] = loss.detach()
+
                 if self.local_rank == 0:
                     desc = f"[bold green] [{i+1}/{steps}]: "
                     for k, v in result.items():
@@ -261,10 +262,12 @@ class AIBLCV(object):
                     pg.update(task, advance=1., description=desc)
                     pg.refresh()
 
-                y_true.append(y.long())
-                y_pred.append(logits)
+                y_true.append(y.detach().chunk(self.config.num_slices)[0].long())
 
-        out = {k: v.mean().item() for k, v in result.items()}
+                num_classes = logit.shape[-1]
+                y_pred.append(logit.detach().reshape(self.config.num_slices, -1, num_classes).mean(0))
+
+        result = {k: v.mean().item() for k, v in result.items()}
 
         # enforce to float32: accuracy and macro f1 score
         y_true = torch.cat(y_true, dim=0)
@@ -274,9 +277,9 @@ class AIBLCV(object):
                                            y_pred=y_pred.softmax(1).detach().cpu().numpy(),
                                            adjusted=False)
         for k, v in clf_result.items():
-            out[k] = v
+            result[k] = v
 
-        return out
+        return result
 
     @torch.no_grad()
     def evaluate(self, data_loader, adjusted=False, return_values=False):
@@ -291,17 +294,23 @@ class AIBLCV(object):
         y_true, y_pred = [], []
         for i, batch in enumerate(data_loader):
 
-            x = batch['x'].float().to(self.local_rank)
-            y = batch['y'].to(self.local_rank)
-            logits = self.classifier(self.backbone(x))
-            loss = self.loss_function(logits, y.long())
+            x = torch.concat(batch['x']).float().to(self.local_rank)
+            y = batch['y'].long().repeat(self.config.num_slices).to(self.local_rank)
+
+            h = self.networks['projector_mri_s'](self.networks['extractor_mri_s'](x))
+            z = self.networks['encoder_general_s'](h)
+            logit = self.networks['classifier_s'](z * 2)
+
+            loss = self.loss_function(logit, y)
 
             result['loss'][i] = loss.detach()
 
-            y_true.append(y.long())
-            y_pred.append(logits)
+            y_true.append(y.detach().chunk(self.config.num_slices)[0].long())
 
-        out = {k: v.mean().item() for k, v in result.items()}
+            num_classes = logit.shape[-1]
+            y_pred.append(logit.detach().reshape(self.config.num_slices, -1, num_classes).mean(0))
+
+        result = {k: v.mean().item() for k, v in result.items()}
 
         # accuracy and macro f1 score
         y_true = torch.cat(y_true, dim=0)
@@ -311,38 +320,37 @@ class AIBLCV(object):
                                            y_pred=y_pred.softmax(1).detach().cpu().numpy(),
                                            adjusted=adjusted)
         for k, v in clf_result.items():
-            out[k] = v
+            result[k] = v
 
         if return_values:
-            return out, y_true, y_pred
+            return result, y_true, y_pred
         else:
-            return out
+            return result
 
     def _set_learning_phase(self, train=False):
-        if train:
-            self.backbone.train()
-            self.classifier.train()
-        else:
-            self.backbone.eval()
-            self.classifier.eval()
-
-    def save_checkpoint(self, path: str, **kwargs):
-        ckpt = {
-            'backbone': self.backbone.state_dict(),
-            'classifier': self.classifier.state_dict(),
-            'optimizer': self.optimizer.state_dict(),
-        }
-        if kwargs:
-            ckpt.update(kwargs)
-        torch.save(ckpt, path)
-
-    def load_model_from_checkpoint(self, path: str):
-        ckpt = torch.load(path)
-        self.backbone.load_state_dict(ckpt['backbone'])
-        self.classifier.load_state_dict(ckpt['classifier'])
-        self.optimizer.load_state_dict(ckpt['optimizer'])
+        for name in self.networks.keys():
+            if train:
+                self.networks[name].train()
+            else:
+                self.networks[name].eval()
 
     @staticmethod
     def freeze_params(net: nn.Module):
         for p in net.parameters():
             p.requires_grad = False
+
+    def save_checkpoint(self, path: str, **kwargs):
+        ckpt = {k: v.state_dict() for k, v in self.networks.items()}
+        if kwargs:
+            ckpt.update(kwargs)
+        torch.save(ckpt, path)
+
+    def update(self, loss):
+        if self.scaler is not None:
+            self.scaler.scale(loss).backward()
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
+        else:
+            loss.backward()
+            self.optimizer.step()
+        self.optimizer.zero_grad()

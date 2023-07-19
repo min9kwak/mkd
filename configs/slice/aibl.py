@@ -75,23 +75,14 @@ class AIBLConfig(object):
         self._task = value
 
     @property
-    def model_name(self) -> str:
-        return self.backbone_type
-
-    @property
     def checkpoint_dir(self) -> str:
         ckpt = os.path.join(
             self.checkpoint_root,
             self.task,          # 'mri', 'pet',
-            self.model_name,    # 'densenet', 'resnet'
             self.hash           # ...
             )
         os.makedirs(ckpt, exist_ok=True)
         return ckpt
-
-    @property
-    def finetune_type(self) -> str:
-        return 'finetune'
 
     @staticmethod
     def convert_arg_line_to_args(arg_line):
@@ -140,14 +131,13 @@ class AIBLConfig(object):
     def finetune_parser() -> argparse.ArgumentParser:
         """Returns an `argparse.ArgumentParser` instance containing logging-related arguments."""
         parser = argparse.ArgumentParser("Finetune", add_help=False)
-        parser.add_argument('--pretrained_dir', type=str, default=None, help='Path to pretrained model file (.pt).')
-        parser.add_argument('--freeze_bn', action='store_true', help='Freeze BN weights of CNN backbone.')
+        parser.add_argument('--student_dir', type=str)
+        parser.add_argument('--student_position', type=str, default='last')
+
         parser.add_argument('--balance', action='store_true', help='apply class balance weight')
-        parser.add_argument('--finetune_trans', type=str, default='test', choices=('train', 'test'))
 
         # data
-        parser.add_argument('--root', type=str, default='/raidWorkspace/mingu/Data/AIBL')
-        parser.add_argument('--data_info', type=str, default='data_info.csv')
+        parser.add_argument('--data_info', type=str, default='data_info_mri.csv')
         parser.add_argument('--time_window', type=int, default=36, choices=(18, 36))
         parser.add_argument('--random_state', type=int, default=2021)
         parser.add_argument('--n_splits', type=int, default=5)
@@ -238,10 +228,6 @@ class DemoAIBLConfig(object):
         )
         os.makedirs(ckpt, exist_ok=True)
         return ckpt
-
-    @property
-    def finetune_type(self) -> str:
-        return 'finetune'
 
     @staticmethod
     def convert_arg_line_to_args(arg_line):

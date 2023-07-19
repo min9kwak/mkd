@@ -14,7 +14,7 @@ from sklearn.preprocessing import MinMaxScaler
 class AIBLProcessor(object):
     def __init__(self,
                  root: str = 'D:/data/AIBL',
-                 data_info: str = 'data_info.csv',
+                 data_info: str = 'data_info_mri.csv',
                  time_window: int = 36,
                  random_state: int = 2021):
 
@@ -33,23 +33,6 @@ class AIBLProcessor(object):
 
         # MCI only
         data_info = data_info.loc[data_info['DX'].isin(['MCI', 'AD'])]
-
-        # self.demo_columns = ['PTGENDER (1=male, 2=female)', 'Age', 'PTEDUCAT', 'MMSCORE']
-        # self.add_apoe = add_apoe
-        # self.add_volume = add_volume
-        # if self.add_apoe:
-        #     self.demo_columns = self.demo_columns + ['APOE Status']
-        # , 'CDGLOBAL', 'SUM BOXES']
-
-        # preprocess MC and Hippocampus Volume
-        # self._preprocess_mc_hippo()
-        # self._preprocess_demo()
-
-        # include hippocampus volume for simplicity
-        # if self.add_volume:
-        #     self.demo_columns = self.demo_columns + ['Volume']
-        #
-        # self.num_demo_columns = len(self.demo_columns)
 
         self.u_data_info = data_info.loc[data_info['Conv_36'].isin([-1])].reset_index(drop=True)
         self.data_info = data_info.loc[data_info['Conv_36'].isin([0, 1])].reset_index(drop=True)
@@ -77,8 +60,6 @@ class AIBLProcessor(object):
         self.u_data_info = self.u_data_info[~self.u_data_info.RID.isin(test_rid)]
         u_train_info = self.u_data_info.reset_index(drop=True)
 
-        # TODO: demographic and clinical data preprocessing
-
         # parse to make paths
         train_data = self.parse_info(train_info)
         test_data = self.parse_info(test_info)
@@ -97,7 +78,7 @@ class AIBLProcessor(object):
         return datasets
 
     def parse_info(self, data_info):
-        image_files = [os.path.join(self.root, f'template/PIB/{p}') if type(p) == str else p
+        image_files = [os.path.join(self.root, f'template/MRI/{p}') if type(p) == str else p
                        for p in data_info['image_file'].tolist()]
         y = data_info['Conv_36'].values
         return dict(image_files=image_files, y=y)
@@ -140,19 +121,23 @@ if __name__ == '__main__':
     np.bincount(datasets['train']['y'])
     np.bincount(datasets['test']['y'])
 
-    from datasets.transforms import make_transforms
-    train_transform, test_transform = make_transforms(image_size=72,
-                                                      intensity='normalize',
-                                                      rotate=True,
-                                                      flip=True,
-                                                      prob=0.5)
+    from datasets.slice.transforms import make_mri_transforms
+    train_transform, test_transform = make_mri_transforms(image_size_mri=72,
+                                                          intensity_mri='scale',
+                                                          crop_size_mri=64,
+                                                          rotate_mri=True,
+                                                          flip_mri=True,
+                                                          affine_mri=False,
+                                                          blur_std_mri=None,
+                                                          train_slices='fixed',
+                                                          prob=0.5)
     train_set = AIBLDataset(dataset=datasets['test'], transform=train_transform)
 
     from torch.utils.data import DataLoader
     train_loader = DataLoader(dataset=train_set, batch_size=4,
                               sampler=None, drop_last=True)
     for batch in train_loader:
-        slice = batch['x'][0, 0, 36, :, :]
+        slice = batch['x'][0][0, 0, :, :]
         import matplotlib.pyplot as plt
         import seaborn as sns
         sns.heatmap(slice, cmap='binary')

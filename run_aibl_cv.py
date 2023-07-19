@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import argparse
 import collections
+import copy
 import os
 import sys
 import json
@@ -13,29 +14,17 @@ import wandb
 import torch
 import torch.nn as nn
 
-from configs.aibl import AIBLConfig
-from tasks.aibl_cv import AIBLCV
+from configs.slice.aibl import AIBLConfig
+from tasks.slice.aibl_cv import AIBLCV
 
-from models.backbone.base import calculate_out_features
-from models.backbone.densenet import DenseNetBackbone
-from models.backbone.resnet import build_resnet_backbone
-from models.head.classifier import LinearClassifier
+from models.slice.build import build_networks_general_teacher
 
 from datasets.aibl import AIBLProcessor, AIBLDataset
-from datasets.transforms import make_transforms
+from datasets.slice.transforms import make_mri_transforms
 
 from utils.logging import get_rich_logger
 from utils.gpu import set_gpu
 from utils.metrics import classification_result
-
-
-def freeze_bn(module):
-    for name, child in module.named_children():
-        if isinstance(child, nn.BatchNorm3d):
-            for param in child.parameters():
-                param.requires_grad = False
-    for n, ch in module.named_children():
-        freeze_bn(ch)
 
 
 def main():
@@ -43,35 +32,34 @@ def main():
 
     config = AIBLConfig.parse_arguments()
 
-    pretrained_file = os.path.join(config.pretrained_dir, "ckpt.last.pth.tar")
-    setattr(config, 'pretrained_file', pretrained_file)
+    student_file = os.path.join(config.student_dir, f"ckpt.{config.student_position}.pth.tar")
+    setattr(config, 'student_file', student_file)
 
-    pretrained_config = os.path.join(config.pretrained_dir, "configs.json")
-    with open(pretrained_config, 'rb') as fb:
-        pretrained_config = json.load(fb)
+    student_config = os.path.join(config.student_dir, "configs.json")
+    with open(student_config, 'rb') as fb:
+        student_config = json.load(fb)
 
     # inherit pretrained configs
-    pretrained_config_names = [
-        # data_parser
-        # 'data_type', 'root', 'data_info', 'mci_only', 'n_splits', 'n_cv',
-        'image_size', 'small_kernel', 'random_state',
-        'intensity', 'crop', 'crop_size', 'rotate', 'flip', 'affine', 'blur', 'blur_std', 'prob',
-        # model_parser
-        'backbone_type', 'init_features', 'growth_rate', 'block_config', 'bn_size', 'dropout_rate',
-        'arch', 'no_max_pool',
-        # train
-        # 'batch_size',
-        # moco / supmoco
-        'alphas',
-        # others
-        'task'
-    ]
+    for key in student_config.keys():
+        if key not in config.__dict__.keys():
+            # property cannot be done
+            try:
+                setattr(config, key, student_config[key])
+            except:
+                pass
+        else:
+            try:
+                setattr(config, f'{key}_s', student_config[key])
+            except:
+                pass
+    setattr(config, 'hash_s', student_config['hash'])
 
-    for name in pretrained_config_names:
-        if name in pretrained_config.keys():
-            setattr(config, name, pretrained_config[name])
+    config.task = 'AIBL_CV'
 
-    config.task = config.task + f'_aibl_cv'
+    if config.server == 'main':
+        setattr(config, 'root', 'D:/data/AIBL')
+    else:
+        setattr(config, 'root', '/raidWorkspace/mingu/Data/AIBL')
 
     set_gpu(config)
     num_gpus_per_node = len(config.gpus)
@@ -124,8 +112,8 @@ def main():
 
         if config.enable_wandb:
             wandb.init(
-                name=f'{config.backbone_type} : {config.hash} : final',
-                project=f'sttr-{config.task}',
+                name=f'{config.task} : {config.hash} : final',
+                project=f'incomplete-kd-{config.task}',
                 config=config.__dict__
             )
             wandb.log(final_history)
@@ -141,101 +129,67 @@ def main_worker(local_rank: int, config: argparse.Namespace):
     config.batch_size = config.batch_size // config.world_size
     config.num_workers = config.num_workers // config.num_gpus_per_node
 
+    # Transform
+    if config.train_slices == 'random':
+        pass
+    elif config.train_slices == 'fixed':
+        num_slices = 3 * (2 * config.n_points + 1)
+        setattr(config, 'num_slices', num_slices)
+    elif config.train_slices in ['sagittal', 'coronal', 'axial']:
+        setattr(config, 'num_slices', 1)
+    else:
+        raise ValueError
+
+    train_transform_mri, test_transform_mri = make_mri_transforms(
+        image_size_mri=config.image_size_mri, intensity_mri=config.intensity_mri, crop_size_mri=config.crop_size_mri,
+        rotate_mri=config.rotate_mri, flip_mri=config.flip_mri, affine_mri=config.affine_mri,
+        blur_std_mri=config.blur_std_mri, train_slices=config.train_slices, num_slices=config.num_slices,
+        slice_range=config.slice_range, space=config.space, n_points=config.n_points, prob=config.prob)
+
+    # Dataset
+    processor = AIBLProcessor(root=config.root,
+                              data_info='data_info_mri.csv',
+                              time_window=36,
+                              random_state=config.random_state)
+    test_only = True if config.train_mode == 'test' else False
+    datasets_dict = processor.process(n_splits=config.n_splits, n_cv=config.n_cv, test_only=test_only)
+
+    if not test_only:
+        train_set = AIBLDataset(dataset=datasets_dict['train'], transform=train_transform_mri)
+    else:
+        train_set = None
+    test_set = AIBLDataset(dataset=datasets_dict['test'], transform=test_transform_mri)
+
+    # cross-entropy loss function
+    if (config.balance) and (not test_only):
+        class_weight = torch.tensor(processor.class_weight, dtype=torch.float).to(local_rank)
+        loss_function = nn.CrossEntropyLoss(weight=class_weight)
+    else:
+        loss_function = nn.CrossEntropyLoss()
+
+    # student networks
+    architectures = build_networks_general_teacher(config=config)
+    student_network_names = ['extractor_mri', 'projector_mri', 'encoder_general', 'classifier']
+    networks = {f'{k}_s': copy.deepcopy(v) for k, v in architectures.items()
+                if f'{k}_s' in student_network_names}
+    for name, network in networks.items():
+        network.load_weights_from_checkpoint(path=config.student_file, key=name)
+    del architectures
+
     if local_rank == 0:
         logfile = os.path.join(config.checkpoint_dir, 'main.log')
         logger = get_rich_logger(logfile=logfile)
         if config.enable_wandb:
             wandb.init(
-                name=f'{config.backbone_type} : {config.hash} : {config.n_cv}',
-                project=f'sttr-{config.task}',
+                name=f'{config.task} : {config.hash} : {config.n_cv}',
+                project=f'incomplete-kd-{config.task}',
                 config=config.__dict__
             )
     else:
         logger = None
 
-    # Networks
-    if config.backbone_type == 'densenet':
-        backbone = DenseNetBackbone(in_channels=1,
-                                    init_features=config.init_features,
-                                    growth_rate=config.growth_rate,
-                                    block_config=config.block_config,
-                                    bn_size=config.bn_size,
-                                    dropout_rate=config.dropout_rate,
-                                    semi=False)
-        activation = True
-    elif config.backbone_type == 'resnet':
-        backbone = build_resnet_backbone(arch=config.arch,
-                                         no_max_pool=config.no_max_pool,
-                                         in_channels=1,
-                                         semi=False)
-        activation = False
-    else:
-        raise NotImplementedError
-
-    if config.small_kernel:
-        backbone._fix_first_conv()
-
-    # load pretrained model weights
-    backbone.load_weights_from_checkpoint(path=config.pretrained_file, key='backbone')
-
-    if config.freeze_bn:
-        freeze_bn(backbone)
-
-    # classifier
-    if config.crop_size:
-        out_dim = calculate_out_features(backbone=backbone, in_channels=1, image_size=config.crop_size)
-    else:
-        out_dim = calculate_out_features(backbone=backbone, in_channels=1, image_size=config.image_size)
-    classifier = LinearClassifier(in_channels=out_dim, num_classes=2, activation=activation)
-    # classifier = MLPClassifier(in_channels=out_dim, num_classes=2, activation=activation)
-
-    # load pretrained model weights
-    classifier.load_weights_from_checkpoint(path=config.pretrained_file, key='classifier')
-
-    # load finetune data
-    data_processor = AIBLProcessor(root=config.root,
-                                   data_info=config.data_info,
-                                   time_window=config.time_window,
-                                   random_state=config.random_state)
-    test_only = True if config.train_mode == 'test' else False
-    datasets = data_processor.process(n_splits=config.n_splits, n_cv=config.n_cv, test_only=test_only)
-
-    # intensity normalization
-    assert config.intensity in [None, 'scale', 'minmax', 'normalize']
-    mean_std, min_max = (None, None), (None, None)
-    if config.intensity == 'minmax':
-        with open(os.path.join(config.root, 'labels/minmax.pkl'), 'rb') as fb:
-            minmax_stats = pickle.load(fb)
-            min_max = (minmax_stats[config.data_type]['min'], minmax_stats[config.data_type]['max'])
-    else:
-        pass
-
-    train_transform, test_transform = make_transforms(image_size=config.image_size,
-                                                      intensity=config.intensity,
-                                                      min_max=min_max,
-                                                      crop_size=config.crop_size,
-                                                      rotate=config.rotate,
-                                                      flip=config.flip,
-                                                      affine=config.affine,
-                                                      blur_std=config.blur_std,
-                                                      prob=config.prob)
-
-    finetune_transform = train_transform if config.finetune_trans == 'train' else test_transform
-    if not test_only:
-        train_set = AIBLDataset(dataset=datasets['train'], transform=finetune_transform)
-    else:
-        train_set = None
-    test_set = AIBLDataset(dataset=datasets['test'], transform=test_transform)
-
-    # Reconfigure batch-norm layers
-    if (config.balance) and (not test_only):
-        class_weight = torch.tensor(data_processor.class_weight, dtype=torch.float).to(local_rank)
-        loss_function = nn.CrossEntropyLoss(weight=class_weight)
-    else:
-        loss_function = nn.CrossEntropyLoss()
-
     # Model (Task)
-    model = AIBLCV(backbone=backbone, classifier=classifier, config=config)
+    model = AIBLCV(networks=networks, config=config)
     model.prepare(
         loss_function=loss_function,
         local_rank=local_rank,
@@ -256,7 +210,7 @@ def main_worker(local_rank: int, config: argparse.Namespace):
         logger.info(f'Total training time: {elapsed_mins:,.2f} minutes.')
         logger.handlers.clear()
 
-    del model, train_set, test_set, backbone, classifier
+    del model, train_set, test_set, networks
 
     return y_true, y_pred
 
