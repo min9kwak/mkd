@@ -439,7 +439,7 @@ class Simulator:
             long_loader, short_loader = data_complete_loader, data_incomplete_loader
         else:
             complete_is_long = False
-            long_loader, short_loader = data_incomplete_loader, data_incomplete_loader
+            long_loader, short_loader = data_incomplete_loader, data_complete_loader
         short_loader_cycle = cycle(short_loader)
 
         y_true, y_pred = [], []
