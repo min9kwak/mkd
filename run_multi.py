@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-
+import argparse
 import os
 import sys
 import time
@@ -15,7 +15,7 @@ from tasks.slice.multi import Multi
 
 from datasets.brain import BrainProcessor, BrainMulti
 from datasets.slice.transforms import make_mri_transforms, make_pet_transforms
-from models.slice.build import build_networks_multi
+from models.slice.build import build_networks_multi, build_networks_general_teacher
 
 from utils.logging import get_rich_logger
 from utils.gpu import set_gpu
@@ -53,7 +53,7 @@ def main():
         main_worker(0, config=config)  # single machine, single gpu
 
 
-def main_worker(local_rank: int, config: object):
+def main_worker(local_rank: int, config: argparse.Namespace):
     """Single process."""
 
     torch.cuda.set_device(local_rank)
@@ -67,7 +67,8 @@ def main_worker(local_rank: int, config: object):
     if config.train_slices == 'random':
         pass
     elif config.train_slices == 'fixed':
-        setattr(config, 'num_slices', 3)
+        num_slices = 3 * (2 * config.n_points + 1)
+        setattr(config, 'num_slices', num_slices)
     elif config.train_slices in ['sagittal', 'coronal', 'axial']:
         setattr(config, 'num_slices', 1)
     else:
@@ -85,6 +86,9 @@ def main_worker(local_rank: int, config: object):
         slice_range=config.slice_range, prob=config.prob)
 
     # Dataset
+    if config.missing_rate == -1.0:
+        setattr(config, 'missing_rate', None)
+
     processor = BrainProcessor(root=config.root,
                                data_file=config.data_file,
                                mri_type=config.mri_type,
@@ -109,10 +113,15 @@ def main_worker(local_rank: int, config: object):
     datasets = {'train': train_set, 'validation': validation_set, 'test': test_set}
 
     # Networks
-    networks = build_networks_multi(config=config)
-    networks = {'encoder_pet': networks['encoder_pet'],
-                'encoder_mri': networks['encoder_mri'],
-                'classifier': networks['classifier']}
+    if config.extended:
+        network_names = ['extractor_mri', 'extractor_pet', 'projector_mri', 'projector_pet',
+                         'encoder_mri', 'encoder_pet', 'classifier']
+        networks = build_networks_general_teacher(config=config)
+        for name in network_names:
+            if name not in network_names:
+                networks[name] = None
+    else:
+        networks = build_networks_multi(config=config)
 
     # Cross Entropy Loss Function
     class_weight = None

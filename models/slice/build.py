@@ -30,29 +30,29 @@ def build_networks_single(config, **kwargs):
 def build_networks_multi(config, **kwargs):
 
     # 1. Encoder
-    if 'resnet' in config.encoder_type:
-        encoder_mri = ResNetBackbone(name=config.encoder_type, in_channels=1)
-        encoder_pet = ResNetBackbone(name=config.encoder_type, in_channels=1)
-    elif 'densenet' in config.encoder_type:
-        encoder_mri = DenseNetBackbone(name=config.encoder_type, in_channels=1)
-        encoder_pet = DenseNetBackbone(name=config.encoder_type, in_channels=1)
+    if 'resnet' in config.extractor_type:
+        extractor_mri = ResNetBackbone(name=config.extractor_type, in_channels=1)
+        extractor_pet = ResNetBackbone(name=config.extractor_type, in_channels=1)
+    elif 'densenet' in config.extractor_type:
+        extractor_mri = DenseNetBackbone(name=config.extractor_type, in_channels=1)
+        extractor_pet = DenseNetBackbone(name=config.extractor_type, in_channels=1)
     else:
         raise ValueError
 
     if config.small_kernel:
-        encoder_mri._fix_first_conv()
-        encoder_pet._fix_first_conv()
+        extractor_mri._fix_first_conv()
+        extractor_pet._fix_first_conv()
 
     # 2. Classifier
     if config.add_type == 'concat':
-        out_dim = encoder_mri.out_channels + encoder_pet.out_channels
+        out_dim = extractor_mri.out_channels + extractor_pet.out_channels
     else:
-        assert encoder_mri.out_channels == encoder_pet.out_channels
-        out_dim = encoder_mri.out_channels
-    classifier = GAPLinearClassifier(name=config.encoder_type, in_channels=out_dim, n_classes=2)
+        assert extractor_mri.out_channels == extractor_pet.out_channels
+        out_dim = extractor_mri.out_channels
+    classifier = GAPLinearClassifier(name=config.extractor_type, in_channels=out_dim, n_classes=2)
 
     # Return
-    networks = dict(encoder_mri=encoder_mri, encoder_pet=encoder_pet, classifier=classifier)
+    networks = dict(extractor_mri=extractor_mri, encoder_pet=extractor_pet, classifier=classifier)
 
     return networks
 
