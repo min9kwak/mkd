@@ -110,9 +110,9 @@ def main_worker(local_rank: int, config: argparse.Namespace):
 
     # create train_params
     train_params = {
-        'scratch': {'epochs': config.epochs_scratch,
-                    'learning_rate': config.learning_rate_scratch,
-                    'weight_decay': config.weight_decay_scratch},
+        'single': {'epochs': config.epochs_single,
+                   'learning_rate': config.learning_rate_single,
+                   'weight_decay': config.weight_decay_single},
         'teacher': {'epochs': config.epochs_teacher,
                     'learning_rate': config.learning_rate_teacher,
                     'weight_decay': config.weight_decay_teacher},
@@ -122,6 +122,9 @@ def main_worker(local_rank: int, config: argparse.Namespace):
         'final': {'epochs': config.epochs_final,
                   'learning_rate': config.learning_rate_final,
                   'weight_decay': config.weight_decay_final},
+        'multi': {'epochs': config.epochs_multi,
+                  'learning_rate': config.learning_rate_multi,
+                  'weight_decay': config.weight_decay_multi},
     }
     setattr(config, 'train_params', train_params)
 
