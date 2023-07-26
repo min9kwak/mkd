@@ -52,9 +52,9 @@ class SliceFinalMutli(ConfigBase):
         parser.add_argument('--sampler_type', type=str, default='stratified', choices=('over', 'stratified'))
         parser.add_argument('--different_lr', type=str2bool, default=False, help='apply class balance weight')
 
-        parser.add_argument('--use_specific', type=str2bool, default=False)
+        parser.add_argument('--use_specific_final', type=str2bool, default=False)
         parser.add_argument('--use_teacher', type=str2bool, default=False)
-        parser.add_argument('--use_student', type=str2bool, default=False)
+        parser.add_argument('--use_student', type=str2bool, default=True)
 
         # Weight Alpha
         parser.add_argument('--alpha_ce', type=float, default=1.0)

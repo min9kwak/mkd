@@ -18,12 +18,12 @@ ALPHA_KD_REPR=500.0
 STUDENT_PRE="checkpoints/GeneralDistillation-FBP/"
 STUDENT_POSITION=last
 
-USE_SPECIFIC=False
+USE_SPECIFIC_FINAL=True
 USE_TEACHER=False
 USE_STUDENT=True
 
 # "2023-06-18_09-50-44" "2023-06-18_06-20-15" "2023-06-18_02-19-54" "2023-06-17_22-36-08" "2023-06-21_04-19-50"
-for HASH in "2023-06-18_09-50-44"
+for HASH in "2023-06-18_09-50-44" "2023-06-18_06-20-15" "2023-06-18_02-19-54" "2023-06-17_22-36-08" "2023-06-21_04-19-50"
 do
   for LEARNING_RATE in 0.001
   do
@@ -51,7 +51,7 @@ do
           --temperature $TEMPERATURE \
           --student_dir $STUDENT_DIR \
           --student_position $STUDENT_POSITION \
-          --use_specific $USE_SPECIFIC \
+          --use_specific_final $USE_SPECIFIC_FINAL \
           --use_teacher $USE_TEACHER \
           --use_student $USE_STUDENT
         done

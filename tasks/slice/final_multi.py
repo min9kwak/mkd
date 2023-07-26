@@ -295,6 +295,8 @@ class FinalMulti(object):
 
     def train_step(self, batch):
 
+        # TODO: utilize large dataset for feature-level KD
+
         # input data
         x_mri = torch.concat(batch['mri']).float().to(self.local_rank)
         x_pet = torch.concat(batch['pet']).float().to(self.local_rank)
@@ -334,8 +336,8 @@ class FinalMulti(object):
         loss_recon = loss_recon_mri + loss_recon_pet
 
         # classification
-        if self.config.use_specific:
-            logit = self.networks['classifier'](z_mri_general + z_pet_general + z_mri + z_pet_general)
+        if self.config.use_specific_final:
+            logit = self.networks['classifier'](z_mri_general + z_pet_general + z_mri + z_pet)
         else:
             logit = self.networks['classifier'](z_mri_general + z_pet_general)
 
