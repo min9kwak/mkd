@@ -39,7 +39,7 @@ do
       --use_unlabeled $USE_UNLABELED \
       --data_file labels/data_info_multi.csv \
       --missing_rate $MISSING_RATE \
-      --encoder_type $EXTRACTOR_TYPE \
+      --extractor_type $EXTRACTOR_TYPE \
       --small_kernel $SMALL_KERNEL \
       --random_state $RANDOM_STATE \
       --epochs $EPOCHS \

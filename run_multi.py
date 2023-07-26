@@ -117,9 +117,7 @@ def main_worker(local_rank: int, config: argparse.Namespace):
         network_names = ['extractor_mri', 'extractor_pet', 'projector_mri', 'projector_pet',
                          'encoder_mri', 'encoder_pet', 'classifier']
         networks = build_networks_general_teacher(config=config)
-        for name in network_names:
-            if name not in network_names:
-                networks[name] = None
+        networks = {k: v for k, v in networks.items() if k in network_names and v is not None}
     else:
         networks = build_networks_multi(config=config)
 
