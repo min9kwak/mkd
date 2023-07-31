@@ -148,7 +148,7 @@ class Multi(object):
                 wandb.log(epoch_history)
 
             # Save best model checkpoint
-            eval_loss = test_history['cross_entropy']
+            eval_loss = test_history['loss_ce']
             if eval_loss <= best_eval_loss:
                 best_eval_loss = eval_loss
                 best_epoch = epoch
