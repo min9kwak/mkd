@@ -109,6 +109,32 @@ class GAPLinearClassifier(GAPHeadBase):
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
 
 
+class GAPSimpleProjector(GAPHeadBase):
+    def __init__(self, in_channels: int, out_channels: int):
+        super(GAPSimpleProjector, self).__init__(in_channels, out_channels)
+
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.layers = self.make_layers(self.in_channels, self.out_channels)
+        initialize_weights(self.layers)
+
+    @staticmethod
+    def make_layers(in_channels: int, out_channels: int):
+        layers = nn.Sequential(
+            collections.OrderedDict(
+                [
+                    ('gap', nn.AdaptiveAvgPool2d(1)),
+                    ('flatten', nn.Flatten(1)),
+                    ('linear', nn.Linear(in_channels, out_channels)),
+                ]
+            )
+        )
+        return layers
+
+    def forward(self, x: torch.Tensor):
+        return self.layers(x)
+
+
 class GAPLinearProjector(GAPHeadBase):
     # https://github.com/declare-lab/MISA/blob/master/src/models.py
     def __init__(self, name: str, in_channels: int, out_channels: int):
@@ -192,6 +218,29 @@ class LinearEncoder(LinearHeadBase):
         return out
 
 
+class SimpleEncoder(LinearHeadBase):
+    def __init__(self, in_channels: int, out_channels: int):
+        super(SimpleEncoder, self).__init__(in_channels, out_channels)
+
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+
+        self.layers = nn.Sequential(
+            collections.OrderedDict(
+                [
+                    ('linear', nn.Linear(self.in_channels, self.out_channels)),
+                    ('norm', nn.LayerNorm(self.out_channels)),
+                ]
+            )
+        )
+        initialize_weights(self.layers)
+
+    def forward(self, x: torch.Tensor):
+        out = self.layers(x)
+        out = F.normalize(out, p=2, dim=1)
+        return out
+
+
 class LinearDecoder(LinearHeadBase):
     def __init__(self, in_channels: int, out_channels: int):
         super(LinearDecoder, self).__init__(in_channels, out_channels)
@@ -209,6 +258,27 @@ class LinearDecoder(LinearHeadBase):
 
     def forward(self, x: torch.Tensor):
         return self.layers(x)
+
+
+class SimpleDecoder(LinearHeadBase):
+    def __init__(self, in_channels: int, out_channels: int):
+        super(SimpleDecoder, self).__init__(in_channels, out_channels)
+
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+
+        self.layers = nn.Sequential(
+            collections.OrderedDict(
+                [
+                    ('linear', nn.Linear(self.in_channels, self.out_channels)),
+                ]
+            )
+        )
+        initialize_weights(self.layers)
+
+    def forward(self, x: torch.Tensor):
+        out = self.layers(x)
+        return out
 
 
 class MLPEncoder(LinearHeadBase):

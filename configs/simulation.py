@@ -173,9 +173,11 @@ class ConfigSimulation(object):
 
         # train level
         parser.add_argument('--train_level', type=int, default=3,
-                            choices=(0, 1, 2, 3, -1),
-                            # TODO -1 -> 4
-                            help='0: single-modal from scratch, 1: teacher, 2: teacher+kd, 3: teacher+kd+final,'
+                            choices=(0, 1, 2, 3, 4),
+                            help='0: single-modal from scratch,'
+                                 '1: teacher,'
+                                 '2: teacher+kd,'
+                                 '3: teacher+kd+final (use_specific True and False),'
                                  '4: multi-modal from scratch')
 
         # scratch: use default
@@ -199,8 +201,6 @@ class ConfigSimulation(object):
         parser.add_argument('--learning_rate_final', type=float, default=0.001, help='Base learning rate to start from.')
         parser.add_argument('--weight_decay_final', type=float, default=0.0001, help='Weight decay factor.')
 
-        parser.add_argument('--use_specific_final', type=str2bool, default=False)
-
         # multi
         parser.add_argument('--epochs_multi', type=int, default=30, help='Number of training epochs.')
         parser.add_argument('--learning_rate_multi', type=float, default=0.0001, help='Base learning rate to start from.')
@@ -215,6 +215,7 @@ class ConfigSimulation(object):
     def model_parser() -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser("Simulation Data", add_help=False)
         parser.add_argument('--hidden', type=int, default=25)
+        parser.add_argument('--simple', type=str2bool, default=False)
 
         return parser
 

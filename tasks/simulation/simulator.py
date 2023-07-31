@@ -14,7 +14,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
 from utils.metrics import classification_result
-from utils.simulation import build_networks, build_short_networks
+from utils.simulation import build_networks, build_short_networks, build_simple_networks
 from utils.logging import get_rich_pbar
 from utils.optimization import get_optimizer, get_cosine_scheduler
 
@@ -32,6 +32,7 @@ class Simulator:
         self.scheduler = None
         self.train_mode = None
         self.train_params = None
+        self.use_specific_final = None
         self.prepared = False
 
     def prepare(self,
@@ -239,58 +240,60 @@ class Simulator:
             self.networks_kd = self.networks
 
         # 3. Final Multi-Modal
-        # TODO: if self.config.train_level >= 3:
-        if self.config.train_level == 3:
-            self.train_mode = 'final'
-            self.train_params = copy.deepcopy(self.config.train_params[self.train_mode])
-            self.create_network_optimizer(train_mode=self.train_mode, train_params=self.train_params)
+        if self.config.train_level >= 3:
 
-            # train
-            with get_rich_pbar(transient=True, auto_refresh=False) as pg:
-                task = pg.add_task(f"[bold red] Training Final...")
-                for epoch in tqdm.tqdm(range(1, self.train_params['epochs'] + 1), total=len(loaders['train_complete']),
-                                       desc='Training Final'):
-                    self.epoch = epoch
-                    train_history = self.train_final(loaders['train_complete'], train=True, adjusted=False)
-                    with torch.no_grad():
-                        test_history = self.train_final(loaders['test'], train=False, adjusted=False)
+            for use_specific_final in [True, False]:
+                self.use_specific_final = use_specific_final
+                self.train_mode = 'final'
+                self.train_params = copy.deepcopy(self.config.train_params[self.train_mode])
+                self.create_network_optimizer(train_mode=self.train_mode, train_params=self.train_params)
 
-                    epoch_history = self.make_epoch_history(train_history=train_history,
-                                                            test_history=test_history,
-                                                            adjusted=False)
-                    if self.config.enable_wandb:
-                        wandb.log({'epoch_final': epoch}, commit=False)
+                # train
+                with get_rich_pbar(transient=True, auto_refresh=False) as pg:
+                    task = pg.add_task(f"[bold red] Training Final ({self.use_specific_final})...")
+                    for epoch in tqdm.tqdm(range(1, self.train_params['epochs'] + 1), total=len(loaders['train_complete']),
+                                           desc=f'Training Final ({self.use_specific_final})'):
+                        self.epoch = epoch
+                        train_history = self.train_final(loaders['train_complete'], train=True, adjusted=False)
+                        with torch.no_grad():
+                            test_history = self.train_final(loaders['test'], train=False, adjusted=False)
+
+                        epoch_history = self.make_epoch_history(train_history=train_history,
+                                                                test_history=test_history,
+                                                                adjusted=False)
+                        if self.config.enable_wandb:
+                            wandb.log({f'epoch_final_{use_specific_final}': epoch}, commit=False)
+                            if self.scheduler is not None:
+                                wandb.log({f'lr_final_{use_specific_final}': self.scheduler.get_last_lr()[0]}, commit=False)
+                            else:
+                                wandb.log({f'lr_final_{use_specific_final}': self.optimizer.param_groups[0]['lr']}, commit=False)
+                            wandb.log(epoch_history)
+
+                        if self.save_log:
+                            self.logs[self.train_mode][epoch] = epoch_history
+                        desc = f"[bold green] Training Final ({self.use_specific_final})... " \
+                               f"Epoch {self.epoch} / {self.train_params['epochs']}"
+                        pg.update(task, advance=1.0, description=desc)
+                        pg.refresh()
+
+                        # update learning rate
                         if self.scheduler is not None:
-                            wandb.log({'lr_final': self.scheduler.get_last_lr()[0]}, commit=False)
-                        else:
-                            wandb.log({'lr_final': self.optimizer.param_groups[0]['lr']}, commit=False)
-                        wandb.log(epoch_history)
+                            self.scheduler.step()
+                del pg
 
-                    if self.save_log:
-                        self.logs[self.train_mode][epoch] = epoch_history
-                    desc = f"[bold green] Training Final... Epoch {self.epoch} / {self.train_params['epochs']}"
-                    pg.update(task, advance=1.0, description=desc)
-                    pg.refresh()
-
-                    # update learning rate
-                    if self.scheduler is not None:
-                        self.scheduler.step()
-            del pg
-
-            # last & adjusted
-            with torch.no_grad():
-                adjusted_history = self.train_final(loaders['test'], train=False, adjusted=True)
-            adjusted_history = self.make_epoch_history(train_history=None,
-                                                       test_history=adjusted_history,
-                                                       adjusted=True)
-            if self.config.enable_wandb:
-                wandb.log(adjusted_history)
-            if self.save_log:
-                self.logs[self.train_mode]['adjusted'] = adjusted_history
+                # last & adjusted
+                with torch.no_grad():
+                    adjusted_history = self.train_final(loaders['test'], train=False, adjusted=True)
+                adjusted_history = self.make_epoch_history(train_history=None,
+                                                           test_history=adjusted_history,
+                                                           adjusted=True)
+                if self.config.enable_wandb:
+                    wandb.log(adjusted_history)
+                if self.save_log:
+                    self.logs[f'{self.train_mode}-{use_specific_final}']['adjusted'] = adjusted_history
 
         # 4. Multi-Modal
-        # TODO: if self.config.train_level >= 4:
-        if self.config.train_level == -1:
+        if self.config.train_level >= 4:
             self.train_mode = 'multi'
             self.train_params = copy.deepcopy(self.config.train_params[self.train_mode])
             self.create_network_optimizer(train_mode=self.train_mode, train_params=self.train_params)
@@ -380,7 +383,7 @@ class Simulator:
         y = batch['y'].long().to(self.local_rank)
 
         if self.short:
-            z1 = self.networks['extractor_1'](x1)
+            z1 = self.networks['extractor_1_s'](x1)
         else:
             h1 = self.networks['extractor_1_s'](x1)
             z1 = self.networks['encoder_general_s'](h1)
@@ -575,6 +578,139 @@ class Simulator:
 
         return loss, loss_ce, loss_kd_clf, y_total, logit_total
 
+    # def train_final_with_ul
+    def train_final_all(self, data_complete_loader, data_incomplete_loader, train=True, adjusted=False):
+
+        self._set_learning_phase(train=train, train_mode='final')
+        steps = max(len(data_complete_loader), len(data_incomplete_loader))
+        metric_names = ['total_loss', 'loss_ce', 'loss_sim',
+                        'loss_diff_specific', 'loss_diff_1', 'loss_diff_2',
+                        'loss_recon_1', 'loss_recon_2', 'loss_kd']
+        result = {k: torch.zeros(steps, device=self.local_rank) for k in metric_names}
+
+        # use cycle to extend short loader to be equal to long loader
+        if len(data_complete_loader) >= len(data_incomplete_loader):
+            complete_is_long = True
+            long_loader, short_loader = data_complete_loader, data_incomplete_loader
+        else:
+            complete_is_long = False
+            long_loader, short_loader = data_incomplete_loader, data_complete_loader
+        short_loader_cycle = cycle(short_loader)
+
+        y_true, y_pred = [], []
+
+        for i, (batch_l, batch_s) in enumerate(zip(long_loader, short_loader_cycle)):
+            if complete_is_long:
+                batch_c, batch_ic = batch_l, batch_s
+            else:
+                batch_c, batch_ic = batch_s, batch_l
+            loss, loss_ce, loss_sim, loss_diff_specific, loss_diff_1, loss_diff_2, \
+            loss_recon_1, loss_recon_2, loss_kd, y, logit = self.train_final_all_step(batch_c, batch_ic)
+            if train:
+                self.update(loss)
+
+            # save
+            result['total_loss'][i] = loss.detach()
+            result['loss_ce'][i] = loss_ce.detach()
+            result['loss_sim'][i] = loss_sim.detach()
+            result['loss_diff_specific'][i] = loss_diff_specific.detach()
+            result['loss_diff_1'][i] = loss_diff_1.detach()
+            result['loss_diff_2'][i] = loss_diff_2.detach()
+            result['loss_recon_1'][i] = loss_recon_1.detach()
+            result['loss_recon_2'][i] = loss_recon_2.detach()
+            result['loss_kd'][i] = loss_kd.detach()
+
+            y_true.append(y)
+            y_pred.append(logit)
+
+        result = {k: v.mean().item() for k, v in result.items()}
+
+        # enforce to float32: accuracy and macro f1 score
+        y_true = torch.cat(y_true, dim=0)
+        y_pred = torch.cat(y_pred, dim=0).to(torch.float32)
+
+        clf_result = classification_result(y_true=y_true.cpu().numpy(),
+                                           y_pred=y_pred.softmax(1).detach().cpu().numpy(),
+                                           adjusted=adjusted)
+        for k, v in clf_result.items():
+            result[k] = v
+
+        return result
+
+    def train_final_all_step(self, batch, batch_in):
+
+        # complete batch
+        # input data
+        x1 = batch['x1'].float().to(self.local_rank)
+        x2 = batch['x2'].float().to(self.local_rank)
+        y = batch['y'].long().to(self.local_rank)
+
+        # 1. Student
+        with torch.no_grad():
+            h1_s = self.networks['extractor_1_s'](x1)
+
+        # 2. Final Multi
+        # representation h and z
+        h1 = self.networks['extractor_1'](x1)
+        h2 = self.networks['extractor_2'](x2)
+
+        z1_general = self.networks['encoder_general'](h1)
+        z2_general = self.networks['encoder_general'](h2)
+        z1 = self.networks['encoder_1'](h1)
+        z2 = self.networks['encoder_2'](h2)
+
+        # reconstruction
+        h1_recon = self.networks['decoder_1'](z1_general + z1)
+        h2_recon = self.networks['decoder_2'](z2_general + z2)
+
+        # classification
+        if self.use_specific_final:
+            logit = self.networks['classifier'](z1_general + z2_general + z1 + z2)
+        else:
+            logit = self.networks['classifier'](z1_general + z2_general)
+
+        # incomplete batch
+        x1_in = batch_in['x1'].float().to(self.local_rank)
+        with torch.no_grad():
+            h1_s_in = self.networks['extractor_1_s'](x1)
+
+        ########## TODO
+
+        # Losses
+        # difference
+        loss_diff_specific = self.loss_function_diff(z1, z2)
+        loss_diff_1 = self.loss_function_diff(z1, z1_general)
+        loss_diff_2 = self.loss_function_diff(z2, z2_general)
+        loss_diff = loss_diff_specific + loss_diff_1 + loss_diff_2
+
+        # similarity
+        loss_sim = self.loss_function_sim(z1_general, z2_general)
+
+        # reconstruction
+        loss_recon_1 = self.loss_function_recon(h1_recon, h1)
+        loss_recon_2 = self.loss_function_recon(h2_recon, h2)
+        loss_recon = loss_recon_1 + loss_recon_2
+
+        # cross-entropy
+        loss_ce = self.loss_function_ce(logit, y)
+
+        # knowledge distillation
+        h1_s_norm = F.normalize(h1_s, p=2, dim=1)
+        h1_norm = F.normalize(h1, p=2, dim=1)
+
+        cos = torch.einsum('nc,nc->n', [h1_s_norm, h1_norm])
+        loss_kd = (1 - cos) / (2 * self.config.temperature ** 2)
+        loss_kd = loss_kd.mean()
+
+        loss = self.config.alpha_ce * loss_ce + \
+               self.config.alpha_sim * loss_sim + \
+               self.config.alpha_diff * loss_diff + \
+               self.config.alpha_recon * loss_recon + \
+               self.config.alpha_kd_repr * loss_kd
+
+        return loss, loss_ce, loss_sim, loss_diff_specific, loss_diff_1, loss_diff_2, \
+               loss_recon_1, loss_recon_2, loss_kd, y, logit
+
     def train_final(self, data_loader, train=True, adjusted=False):
 
         self._set_learning_phase(train=train, train_mode='final')
@@ -645,7 +781,7 @@ class Simulator:
         h2_recon = self.networks['decoder_2'](z2_general + z2)
 
         # classification
-        if self.config.use_specific_final:
+        if self.use_specific_final:
             logit = self.networks['classifier'](z1_general + z2_general + z1 + z2)
         else:
             logit = self.networks['classifier'](z1_general + z2_general)
@@ -760,11 +896,13 @@ class Simulator:
         weight_decay = train_params['weight_decay']
 
         # build networks and bring target pre-trained weights
-        if self.short:
-            assert train_mode in ['single', 'multi']
+        if self.short and train_mode in ['single', 'multi']:
             networks = build_short_networks(config=self.config)
         else:
-            networks = build_networks(config=self.config)
+            if self.config.simple:
+                networks = build_simple_networks(config=self.config)
+            else:
+                networks = build_networks(config=self.config)
             networks_student = {
                 'extractor_1_s': copy.deepcopy(networks['extractor_1']),
                 'encoder_general_s': copy.deepcopy(networks['encoder_general']),
@@ -774,8 +912,8 @@ class Simulator:
         params = []
         if train_mode == 'single':
             if self.short:
-                self.networks = copy.deepcopy(networks)
-                del self.networks['extractor_2']
+                self.networks = {'extractor_1_s': copy.deepcopy(networks['extractor_1']),
+                                 'classifier_s': copy.deepcopy(networks['classifier'])}
             else:
                 # use only student network
                 self.networks = copy.deepcopy(networks_student)
@@ -849,17 +987,20 @@ class Simulator:
 
     def make_epoch_history(self, train_history: dict = None, test_history: dict = None, adjusted: bool = False):
         epoch_history = collections.defaultdict(dict)
+        train_mode = self.train_mode
+        if self.train_mode == 'final':
+            train_mode = f'{train_mode}-{self.use_specific_final}'
         if not adjusted:
             if train_history is not None:
                 for k, v in train_history.items():
-                    epoch_history[f'{self.train_mode}-train/{k}'] = v
+                    epoch_history[f'{train_mode}-train/{k}'] = v
             if test_history is not None:
                 for k, v in test_history.items():
-                    epoch_history[f'{self.train_mode}-test/{k}'] = v
+                    epoch_history[f'{train_mode}-test/{k}'] = v
         else:
             assert test_history is not None
             for k, v in test_history.items():
-                epoch_history[f'{self.train_mode}-adjusted/{k}'] = v
+                epoch_history[f'{train_mode}-adjusted/{k}'] = v
         return epoch_history
 
     @staticmethod

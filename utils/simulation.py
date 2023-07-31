@@ -171,6 +171,26 @@ class Encoder(nn.Module):
         return out
 
 
+class SimpleEncoder(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int):
+        super(SimpleEncoder, self).__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+
+        self.layers = nn.Sequential(collections.OrderedDict(
+            [
+                ('linear1', nn.Linear(self.in_channels, self.out_channels)),
+                ('norm', nn.LayerNorm(self.out_channels)),
+            ]
+        ))
+        initialize_weights(self.layers)
+
+    def forward(self, x: torch.Tensor):
+        out = self.layers(x)
+        out = F.normalize(out, p=2, dim=1)
+        return out
+
+
 # decoder
 class Decoder(nn.Module):
     def __init__(self, in_channels: int, out_channels: int):
@@ -183,6 +203,24 @@ class Decoder(nn.Module):
                 ('linear1', nn.Linear(self.in_channels, self.in_channels)),
                 ('relu', nn.ReLU()),
                 ('norm', nn.LayerNorm(self.in_channels)),
+                ('linear2', nn.Linear(self.in_channels, self.out_channels))
+            ]
+        ))
+        initialize_weights(self.layers)
+
+    def forward(self, x: torch.Tensor):
+        out = self.layers(x)
+        return out
+
+
+class SimpleDecoder(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int):
+        super(SimpleDecoder, self).__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+
+        self.layers = nn.Sequential(collections.OrderedDict(
+            [
                 ('linear2', nn.Linear(self.in_channels, self.out_channels))
             ]
         ))
@@ -210,6 +248,28 @@ class Classifier(nn.Module):
     def forward(self, x: torch.Tensor):
         out = self.layers(x)
         return out
+
+
+def build_simple_networks(config: argparse.Namespace or edict, **kwargs):
+
+    extractor_1 = Extractor(in_channels=config.x_dim, out_channels=config.hidden)
+    extractor_2 = Extractor(in_channels=config.x_dim, out_channels=config.hidden)
+
+    encoder_1 = SimpleEncoder(in_channels=config.hidden, out_channels=config.hidden // 2)
+    encoder_2 = SimpleEncoder(in_channels=config.hidden, out_channels=config.hidden // 2)
+    encoder_general = SimpleEncoder(in_channels=config.hidden, out_channels=config.hidden // 2)
+
+    decoder_1 = SimpleDecoder(in_channels=config.hidden // 2, out_channels=config.hidden)
+    decoder_2 = SimpleDecoder(in_channels=config.hidden // 2, out_channels=config.hidden)
+
+    classifier = Classifier(in_channels=config.hidden // 2, n_classes=2)
+
+    networks = dict(extractor_1=extractor_1, extractor_2=extractor_2,
+                    encoder_1=encoder_1, encoder_2=encoder_2, encoder_general=encoder_general,
+                    decoder_1=decoder_1, decoder_2=decoder_2,
+                    classifier=classifier)
+
+    return networks
 
 
 def build_networks(config: argparse.Namespace or edict, **kwargs):

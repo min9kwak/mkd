@@ -2,6 +2,7 @@ from models.slice.backbone import ResNetBackbone, DenseNetBackbone
 from models.slice.head import GAPLinearClassifier, GAPLinearProjector, LinearEncoder, LinearDecoder
 from models.slice.head import MLPEncoder, MLPDecoder
 from models.slice.head import Classifier, TransformerEncoder
+from models.slice.head import GAPSimpleProjector, SimpleEncoder, SimpleDecoder
 
 
 def build_networks_single(config, **kwargs):
@@ -193,6 +194,42 @@ def build_networks_general_teacher(config, **kwargs):
                     encoder_general=encoder_general, encoder_mri=encoder_mri, encoder_pet=encoder_pet,
                     decoder_mri=decoder_mri, decoder_pet=decoder_pet,
                     transformer_encoder=transformer_encoder, classifier=classifier)
+
+    return networks
+
+
+def build_networks_general_teacher_simple(config, **kwargs):
+    # 1. Extractor
+    extractor_mri = ResNetBackbone(name=config.extractor_type, in_channels=1)
+    extractor_pet = ResNetBackbone(name=config.extractor_type, in_channels=1)
+
+    if config.small_kernel:
+        extractor_mri._fix_first_conv()
+        extractor_pet._fix_first_conv()
+
+    # 2. Projector
+    projector_mri = GAPSimpleProjector(in_channels=extractor_mri.out_channels,
+                                       out_channels=config.hidden)
+    projector_pet = GAPSimpleProjector(in_channels=extractor_mri.out_channels,
+                                       out_channels=config.hidden)
+
+    # 3. Encoder
+    encoder_general = SimpleEncoder(in_channels=config.hidden, out_channels=config.hidden // 2)
+    encoder_mri = SimpleEncoder(in_channels=config.hidden, out_channels=config.hidden // 2)
+    encoder_pet = SimpleEncoder(in_channels=config.hidden, out_channels=config.hidden // 2)
+
+    # 4. Decoder
+    decoder_mri = SimpleDecoder(in_channels=config.hidden, out_channels=extractor_mri.out_channels)
+    decoder_pet = SimpleDecoder(in_channels=config.hidden, out_channels=extractor_pet.out_channels)
+
+    # 5. Classifier
+    classifier = Classifier(in_channels=config.hidden // 2, n_classes=2, mlp=False, dropout=0.0)
+
+    networks = dict(extractor_mri=extractor_mri, extractor_pet=extractor_pet,
+                    projector_mri=projector_mri, projector_pet=projector_pet,
+                    encoder_general=encoder_general, encoder_mri=encoder_mri, encoder_pet=encoder_pet,
+                    decoder_mri=decoder_mri, decoder_pet=decoder_pet,
+                    classifier=classifier)
 
     return networks
 
