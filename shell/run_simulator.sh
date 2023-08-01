@@ -13,7 +13,8 @@ ALPHA_CE=10.0
 SHORT=False
 SIMPLE=True
 
-ALPHA_SIM=10.0
+ALPHA_CE=1.0
+ALPHA_SIM=2.0
 ALPHA_KD_CLF=50.0
 
 #TOTAL_EXP=$((5 * 3 * 1 * 1 * 1 * 1))
@@ -21,32 +22,34 @@ ALPHA_KD_CLF=50.0
 
 for RANDOM_STATE in {2021..2030}
 do
-  for ALPHA_DIFF in 10
+  for ALPHA_RECON in 0.1 0.5 1.0 2.0 5.0 10.0
   do
-    for ALPHA_SIM in 10 12 15 17 20
+    for ALPHA_DIFF in 1.0 2.0 5.0 10.0
     do
-      for ALPHA_RECON in 1 10 20 50 100 200
+      for LEARNING_RATE_TEACHER in 0.001 0.0001 0.0005
       do
-        for ALPHA_CE in 1 2 5 10 12 15 20
+        for ALPHA_CE in 1.0 2.0 5.0
         do
-#         CURRENT_EXP=$((CURRENT_EXP + 1))
-#         echo "$CURRENT_EXP / $TOTAL_EXP"
-          python ./run_simulator.py \
-          --server $SERVER \
-          --gpus $GPUS \
-          --overlap_dim $OVERLAP_DIM \
-          --missing_rate $MISSING_RATE \
-          --random_state $RANDOM_STATE \
-          --alpha_ce $ALPHA_CE \
-          --train_level $TRAIN_LEVEL \
-          --learning_rate_multi $LEARNING_RATE_MULTI \
-          --epochs_multi $EPOCHS_MULTI \
-          --alpha_sim $ALPHA_SIM \
-          --alpha_recon $ALPHA_RECON \
-          --alpha_diff $ALPHA_DIFF \
-          --alpha_kd_clf $ALPHA_KD_CLF \
-          --short $SHORT \
-          --simple $SIMPLE
+          for ALPHA_SIM in 1.0 2.0 5.0 7.0 10.0
+          do
+            python ./run_simulator.py \
+            --server $SERVER \
+            --gpus $GPUS \
+            --overlap_dim $OVERLAP_DIM \
+            --missing_rate $MISSING_RATE \
+            --train_level $TRAIN_LEVEL \
+            --learning_rate_teacher $LEARNING_RATE_TEACHER \
+            --learning_rate_multi $LEARNING_RATE_MULTI \
+            --epochs_multi $EPOCHS_MULTI \
+            --alpha_ce $ALPHA_CE \
+            --alpha_sim $ALPHA_SIM \
+            --alpha_diff $ALPHA_DIFF \
+            --alpha_recon $ALPHA_RECON \
+            --alpha_kd_clf $ALPHA_KD_CLF \
+            --short $SHORT \
+            --simple $SIMPLE \
+            --random_state $RANDOM_STATE
+          done
         done
       done
     done
