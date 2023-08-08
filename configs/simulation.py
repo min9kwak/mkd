@@ -20,6 +20,17 @@ def str2bool(v):
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
 
+def parse_numbers(numbers):
+    return [int(num) for num in numbers.split(",")]
+
+
+def handle_none(string: str):
+    if string.lower() == "none":
+        return None
+    else:
+        return string
+
+
 class ConfigSimulation(object):
     def __init__(self, args: argparse.Namespace = None, **kwargs):
 
@@ -172,13 +183,12 @@ class ConfigSimulation(object):
         parser.add_argument('--mixed_precision', type=str2bool, default=False, help='Use float16 precision.')
 
         # train level
-        parser.add_argument('--train_level', type=int, default=3,
-                            choices=(0, 1, 2, 3, 4),
-                            help='0: single-modal from scratch,'
-                                 '1: teacher,'
-                                 '2: teacher+kd,'
-                                 '3: teacher+kd+final (use_specific True and False),'
-                                 '4: multi-modal from scratch')
+        parser.add_argument('--train_level', type=parse_numbers, default="1,2,3,4,5",
+                            help='1: single-modal from scratch,'
+                                 '2: teacher,'
+                                 '3: teacher+kd,'
+                                 '4: teacher+kd+final (use_specific True and False),'
+                                 '5: multi-modal from scratch')
 
         # scratch: use default
         parser.add_argument('--epochs_single', type=int, default=30, help='Number of training epochs.')
@@ -216,6 +226,7 @@ class ConfigSimulation(object):
         parser = argparse.ArgumentParser("Simulation Data", add_help=False)
         parser.add_argument('--hidden', type=int, default=25)
         parser.add_argument('--simple', type=str2bool, default=False)
+        parser.add_argument('--encoder_act', type=handle_none)
 
         return parser
 

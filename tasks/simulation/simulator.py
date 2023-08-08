@@ -79,8 +79,8 @@ class Simulator:
             'test': DataLoader(dataset=datasets['test'], batch_size=self.batch_size,
                                shuffle=False, drop_last=False)
         }
-        # 0. Student from scratch
-        if self.config.train_level >= 0:
+        # 1. Student from scratch
+        if 1 in self.config.train_level:
             self.train_mode = 'single'
             self.train_params = copy.deepcopy(self.config.train_params[self.train_mode])
             self.create_network_optimizer(train_mode=self.train_mode, train_params=self.train_params)
@@ -130,8 +130,8 @@ class Simulator:
             # save network
             self.networks_single = self.networks
 
-        # 1. General Teacher
-        if self.config.train_level >= 1:
+        # 2. General Teacher
+        if 2 in self.config.train_level:
             self.train_mode = 'teacher'
             self.train_params = copy.deepcopy(self.config.train_params[self.train_mode])
             self.create_network_optimizer(train_mode=self.train_mode, train_params=self.train_params)
@@ -183,8 +183,8 @@ class Simulator:
             # save network
             self.networks_teacher = copy.deepcopy(self.networks)
 
-        # 2. Knowledge Distillation
-        if self.config.train_level >= 2:
+        # 3. Knowledge Distillation
+        if 3 in self.config.train_level:
             self.train_mode = 'kd'
             self.train_params = copy.deepcopy(self.config.train_params[self.train_mode])
             self.create_network_optimizer(train_mode=self.train_mode, train_params=self.train_params)
@@ -239,8 +239,8 @@ class Simulator:
             # save network
             self.networks_kd = self.networks
 
-        # 3. Final Multi-Modal
-        if self.config.train_level >= 3:
+        # 4. Final Multi-Modal
+        if 4 in self.config.train_level:
 
             for use_specific_final in [True, False]:
                 self.use_specific_final = use_specific_final
@@ -292,8 +292,8 @@ class Simulator:
                 if self.save_log:
                     self.logs[f'{self.train_mode}-{use_specific_final}']['adjusted'] = adjusted_history
 
-        # 4. Multi-Modal
-        if self.config.train_level >= 4:
+        # 5. Multi-Modal
+        if 5 in self.config.train_level:
             self.train_mode = 'multi'
             self.train_params = copy.deepcopy(self.config.train_params[self.train_mode])
             self.create_network_optimizer(train_mode=self.train_mode, train_params=self.train_params)

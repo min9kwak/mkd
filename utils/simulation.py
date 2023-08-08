@@ -137,7 +137,7 @@ class Extractor(nn.Module):
         self.layers = nn.Sequential(collections.OrderedDict(
             [
                 ('linear', nn.Linear(in_channels, out_channels)),
-                ('relu', nn.ReLU()),
+                ('relu', nn.LeakyReLU(negative_slope=0.1, inplace=False)),
                 ('norm', nn.LayerNorm(out_channels))
             ]
         ))
@@ -150,16 +150,26 @@ class Extractor(nn.Module):
 
 # encoder (common and specific)
 class Encoder(nn.Module):
-    def __init__(self, in_channels: int, out_channels: int):
+    def __init__(self, in_channels: int, out_channels: int, act: str = 'relu'):
         super(Encoder, self).__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
+
+        self.act = act
+        if self.act == 'relu':
+            act_layer = ('relu', nn.ReLU(inplace=False))
+        elif self.act == 'lrelu':
+            act_layer = ('lrelu', nn.LeakyReLU(negative_slope=0.1, inplace=False))
+        elif self.act == 'sigmoid':
+            act_layer = ('sigmoid', nn.Sigmoid())
+        else:
+            raise ValueError
 
         self.layers = nn.Sequential(collections.OrderedDict(
             [
                 ('linear1', nn.Linear(self.in_channels, self.out_channels)),
                 ('norm', nn.LayerNorm(self.out_channels)),
-                ('relu', nn.ReLU()),
+                act_layer,
                 ('linear2', nn.Linear(self.out_channels, self.out_channels))
             ]
         ))
@@ -172,17 +182,40 @@ class Encoder(nn.Module):
 
 
 class SimpleEncoder(nn.Module):
-    def __init__(self, in_channels: int, out_channels: int):
+    def __init__(self, in_channels: int, out_channels: int, act: str):
         super(SimpleEncoder, self).__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
 
-        self.layers = nn.Sequential(collections.OrderedDict(
-            [
-                ('linear1', nn.Linear(self.in_channels, self.out_channels)),
-                ('norm', nn.LayerNorm(self.out_channels)),
-            ]
-        ))
+        self.act = act
+        if self.act is None:
+            pass
+        elif self.act == 'relu':
+            act_layer = ('relu', nn.ReLU(inplace=False))
+        elif self.act == 'lrelu':
+            act_layer = ('lrelu', nn.LeakyReLU(negative_slope=0.1, inplace=False))
+        elif self.act == 'sigmoid':
+            act_layer = ('sigmoid', nn.Sigmoid())
+        else:
+            raise ValueError
+
+        if self.act is None:
+            self.layers = nn.Sequential(collections.OrderedDict(
+                [
+                    ('linear1', nn.Linear(self.in_channels, self.out_channels)),
+                    ('norm', nn.LayerNorm(self.out_channels)),
+                ]
+            ))
+        else:
+            self.layers = nn.Sequential(
+                collections.OrderedDict(
+                    [
+                        ('linear', nn.Linear(self.in_channels, self.out_channels)),
+                        act_layer,
+                        ('norm', nn.LayerNorm(self.out_channels)),
+                    ]
+                )
+            )
         initialize_weights(self.layers)
 
     def forward(self, x: torch.Tensor):
@@ -255,9 +288,9 @@ def build_simple_networks(config: argparse.Namespace or edict, **kwargs):
     extractor_1 = Extractor(in_channels=config.x_dim, out_channels=config.hidden)
     extractor_2 = Extractor(in_channels=config.x_dim, out_channels=config.hidden)
 
-    encoder_1 = SimpleEncoder(in_channels=config.hidden, out_channels=config.hidden // 2)
-    encoder_2 = SimpleEncoder(in_channels=config.hidden, out_channels=config.hidden // 2)
-    encoder_general = SimpleEncoder(in_channels=config.hidden, out_channels=config.hidden // 2)
+    encoder_1 = SimpleEncoder(in_channels=config.hidden, out_channels=config.hidden // 2, act=config.encoder_act)
+    encoder_2 = SimpleEncoder(in_channels=config.hidden, out_channels=config.hidden // 2, act=config.encoder_act)
+    encoder_general = SimpleEncoder(in_channels=config.hidden, out_channels=config.hidden // 2, act=config.encoder_act)
 
     decoder_1 = SimpleDecoder(in_channels=config.hidden // 2, out_channels=config.hidden)
     decoder_2 = SimpleDecoder(in_channels=config.hidden // 2, out_channels=config.hidden)
@@ -277,9 +310,9 @@ def build_networks(config: argparse.Namespace or edict, **kwargs):
     extractor_1 = Extractor(in_channels=config.x_dim, out_channels=config.hidden)
     extractor_2 = Extractor(in_channels=config.x_dim, out_channels=config.hidden)
 
-    encoder_1 = Encoder(in_channels=config.hidden, out_channels=config.hidden // 2)
-    encoder_2 = Encoder(in_channels=config.hidden, out_channels=config.hidden // 2)
-    encoder_general = Encoder(in_channels=config.hidden, out_channels=config.hidden // 2)
+    encoder_1 = Encoder(in_channels=config.hidden, out_channels=config.hidden // 2, act=config.encoder_act)
+    encoder_2 = Encoder(in_channels=config.hidden, out_channels=config.hidden // 2, act=config.encoder_act)
+    encoder_general = Encoder(in_channels=config.hidden, out_channels=config.hidden // 2, act=config.encoder_act)
 
     decoder_1 = Decoder(in_channels=config.hidden // 2, out_channels=config.hidden)
     decoder_2 = Decoder(in_channels=config.hidden // 2, out_channels=config.hidden)

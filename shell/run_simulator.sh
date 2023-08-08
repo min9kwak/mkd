@@ -5,13 +5,14 @@ GPUS=0
 OVERLAP_DIM=10
 MISSING_RATE=0.2
 
-TRAIN_LEVEL=1
+TRAIN_LEVEL=2
 LEARNING_RATE_MULTI=0.0001
 EPOCHS_MULTI=30
 ALPHA_CE=10.0
 
 SHORT=False
 SIMPLE=True
+ENCODER_ACT=None
 
 ALPHA_CE=1.0
 ALPHA_SIM=2.0
@@ -22,15 +23,15 @@ ALPHA_KD_CLF=50.0
 
 for RANDOM_STATE in {2021..2030}
 do
-  for ALPHA_RECON in 0.1 0.5 1.0 2.0 5.0 10.0
+  for ALPHA_RECON in 0.1 0.5 1.0 2.0 5.0
   do
     for ALPHA_DIFF in 1.0 2.0 5.0 10.0
     do
-      for LEARNING_RATE_TEACHER in 0.001 0.0001 0.0005
+      for ALPHA_SIM in 1.0 2.0 5.0 7.0 10.0
       do
-        for ALPHA_CE in 1.0 2.0 5.0
+        for ALPHA_CE in 1.0 2.0 5.0 10.0
         do
-          for ALPHA_SIM in 1.0 2.0 5.0 7.0 10.0
+          for LEARNING_RATE_TEACHER in 0.001 0.0001 0.0005
           do
             python ./run_simulator.py \
             --server $SERVER \
@@ -48,6 +49,7 @@ do
             --alpha_kd_clf $ALPHA_KD_CLF \
             --short $SHORT \
             --simple $SIMPLE \
+            --encoder_act $ENCODER_ACT \
             --random_state $RANDOM_STATE
           done
         done
