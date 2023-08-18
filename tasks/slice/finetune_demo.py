@@ -56,7 +56,7 @@ class DemoClassification(object):
 
         self.checkpoint_dir = config.checkpoint_dir
         self.epochs = config.epochs
-        self.batch_size = config.batch_size
+        self.batch_size = pretrained_config.batch_size
         self.num_workers = config.num_workers
         self.distributed = config.distributed
         self.local_rank = local_rank
