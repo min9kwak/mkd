@@ -81,7 +81,6 @@ def main_worker(local_rank: int, config: argparse.Namespace, pretrained_config: 
     if config.distributed:
         raise NotImplementedError
 
-    config.batch_size = config.batch_size // config.world_size
     config.num_workers = config.num_workers // config.num_gpus_per_node
 
     # Transform
