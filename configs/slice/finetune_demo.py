@@ -52,5 +52,6 @@ class SliceFinetuneDemo(ConfigBase):
         parser.add_argument('--task_type', type=str, default='single', choices=('single', 'multi'))
         parser.add_argument('--hidden_demo', type=str, default="3")
         parser.add_argument('--different_lr_demo', type=str2bool, default=False, help='apply class balance weight')
+        parser.add_argument('--use_cdr', type=str2bool, default=False, help='apply class balance weight')
 
         return parser

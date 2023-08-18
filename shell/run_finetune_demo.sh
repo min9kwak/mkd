@@ -8,6 +8,7 @@ DIFFERENT_LR_DEMO=False
 
 EPOCHS=10
 LEARNING_RATE=0.0001
+USE_CDR=True
 
 if [ "$TASK_TYPE" == "single" ]; then
     PRETRAINED_FILE_PRE="checkpoints/BestMulti-FBP"
@@ -31,19 +32,22 @@ for HASH in "${HASHS[@]}"; do
     for DIFFERENT_LR_DEMO in True False; do
       for HIDDEN_DEMO in "4,4" "3"; do
         for EPOCHS in 10 30; do
-          PRETRAINED_DIR="${PRETRAINED_FILE_PRE}${HASH}"
-          python ./run_final_multi.py \
-          --gpus $GPUS \
-          --server $SERVER \
-          --pretrained_dir $PRETRAINED_DIR \
-          --task_type $TASK_TYPE \
-          --epochs $EPOCHS \
-          --optimizer adamw \
-          --learning_rate $LEARNING_RATE \
-          --weight_decay 0.0001 \
-          --cosine_warmup 0 \
-          --different_lr_demo $DIFFERENT_LR_DEMO \
-          --hidden_demo=$HIDDEN_DEMO
+          for USE_CDR in True False; do
+            PRETRAINED_DIR="${PRETRAINED_FILE_PRE}${HASH}"
+            python ./run_final_multi.py \
+            --gpus $GPUS \
+            --server $SERVER \
+            --pretrained_dir $PRETRAINED_DIR \
+            --task_type $TASK_TYPE \
+            --epochs $EPOCHS \
+            --optimizer adamw \
+            --learning_rate $LEARNING_RATE \
+            --weight_decay 0.0001 \
+            --cosine_warmup 0 \
+            --different_lr_demo $DIFFERENT_LR_DEMO \
+            --use_cdr $USE_CDR \
+            --hidden_demo=$HIDDEN_DEMO
+          done
         done
       done
     done
