@@ -71,14 +71,16 @@ class ConfigBase(object):
     def save(self, path: str = None):
         """Save configurations to a .json file."""
         if path is None:
-            path = os.path.join(self.checkpoint_dir, 'configs.json')
-        os.makedirs(os.path.dirname(path), exist_ok=True)
+            save_path = os.path.join(self.checkpoint_dir, 'configs.json')
+        else:
+            save_path = os.path.join(self.checkpoint_dir, f'configs_{path}.json')
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
 
         attrs = copy.deepcopy(vars(self))
         attrs['task'] = self.task
         attrs['checkpoint_dir'] = self.checkpoint_dir
 
-        with open(path, 'w') as f:
+        with open(save_path, 'w') as f:
             json.dump(attrs, f, indent=2)
 
     @property
