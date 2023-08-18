@@ -22,6 +22,7 @@ class AIBLProcessor(object):
         self.root = root
         self.time_window = time_window
         self.random_state = random_state
+        self.demo_columns = ['Age', 'PTGENDER', 'CDGLOBAL', 'MMSCORE', 'APOE']
 
         # PiB data (paired with MRI)
         data_info = pd.read_csv(os.path.join(root, data_info), converters={'RID': str})
@@ -34,14 +35,18 @@ class AIBLProcessor(object):
         # MCI only
         data_info = data_info.loc[data_info['DX'].isin(['MCI', 'AD'])]
 
-        self.u_data_info = data_info.loc[data_info['Conv_36'].isin([-1])].reset_index(drop=True)
-        self.data_info = data_info.loc[data_info['Conv_36'].isin([0, 1])].reset_index(drop=True)
+        self.u_data_info = data_info.loc[data_info[f'Conv_{time_window}'].isin([-1])].reset_index(drop=True)
+        self.data_info = data_info.loc[data_info[f'Conv_{time_window}'].isin([0, 1])].reset_index(drop=True)
 
     def process(self, n_splits=10, n_cv=0, test_only=False):
 
-        # def process
+        # preprocessing demo columns
+        self.data_info = self.preprocess_demo(self.data_info)
+        self.u_data_info = self.preprocess_demo(self.u_data_info)
+
+        # processing
         rid = self.data_info.RID.tolist()
-        conv = self.data_info['Conv_36'].tolist()
+        conv = self.data_info[f'Conv_{self.time_window}'].tolist()
         assert 0 <= n_cv < n_splits
 
         cv = StratifiedGroupKFold(n_splits=n_splits, shuffle=True, random_state=2021)
@@ -77,11 +82,42 @@ class AIBLProcessor(object):
 
         return datasets
 
+    def preprocess_demo(self, data):
+
+        # Gender
+        data_demo = data[['RID', f'Conv_{self.time_window}'] + self.demo_columns]
+        data_demo_ = data_demo.copy()
+        data_demo_['PTGENDER'] = data_demo_['PTGENDER'] - 1
+        data_demo = data_demo_.copy()
+
+        # APOE Status
+        data_demo_.loc[:, 'APOE'] = data_demo['APOE'].fillna('NC')
+        data_demo_['APOE'] = [0 if a == 'NC' else 1 for a in data_demo_['APOE'].values]
+        data_demo = data_demo_.copy()
+
+        # MMSCORE and CDGLOBAL
+        cols = ['MMSCORE', 'CDGLOBAL']
+        cols = [c for c in cols if c in self.demo_columns]
+        records = data_demo.groupby(f'Conv_{self.time_window}').mean()[cols].to_dict()
+
+        data_demo_ = data_demo.copy()
+        for col in cols:
+            nan_index = data_demo_.index[data_demo[col].isna()]
+            for i in nan_index:
+                value = records[col][data_demo_.loc[i, f'Conv_{self.time_window}']]
+                data_demo_.loc[i, col] = value
+        data_demo = data_demo_.copy()
+        data[self.demo_columns] = data_demo[self.demo_columns]
+        self.num_demo_columns = len(self.demo_columns)
+
+        return data
+
     def parse_info(self, data_info):
         image_files = [os.path.join(self.root, f'template/MRI/{p}') if type(p) == str else p
                        for p in data_info['image_file'].tolist()]
         y = data_info['Conv_36'].values
-        return dict(image_files=image_files, y=y)
+        demo = data_info[self.demo_columns].values
+        return dict(image_files=image_files, demo=demo, y=y)
 
 #
 class AIBLDataset(Dataset):
@@ -91,6 +127,7 @@ class AIBLDataset(Dataset):
                  transform,
                  **kwargs):
         self.image_files = dataset['image_files']
+        self.demo = dataset['demo']
         self.y = dataset['y']
         self.transform = transform
 
@@ -98,8 +135,9 @@ class AIBLDataset(Dataset):
         img = self.load_image(path=self.image_files[idx])
         if self.transform is not None:
             img = self.transform(img)
+        demo = self.demo[idx]
         y = self.y[idx]
-        return dict(x=img, y=y, idx=idx)
+        return dict(x=img, demo=demo, y=y, idx=idx)
 
     @staticmethod
     def load_image(path):
@@ -143,5 +181,3 @@ if __name__ == '__main__':
         sns.heatmap(slice, cmap='binary')
         plt.show()
         assert False
-
-    # concatenate datasets
