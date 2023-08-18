@@ -25,7 +25,6 @@ class SliceFinetuneDemo(ConfigBase):
         """Returns an `argparse.ArgumentParser` instance containing training-related arguments."""
         parser = argparse.ArgumentParser("Model Training", add_help=False)
         parser.add_argument('--epochs', type=int, default=100, help='Number of training epochs.')
-        parser.add_argument('--batch_size', type=int, default=16, help='Mini-batch size.')
         parser.add_argument('--num_workers', type=int, default=4, help='Number of CPU threads.')
 
         # Optimizer: MRI & PET
@@ -49,29 +48,9 @@ class SliceFinetuneDemo(ConfigBase):
     def task_specific_parser() -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser('General Teacher', add_help=False)
 
+        parser.add_argument('--pretrained_dir', type=str)
         parser.add_argument('--task_type', type=str, default='single', choices=('single', 'multi'))
         parser.add_argument('--hidden_demo', type=str, default="3")
         parser.add_argument('--different_lr_demo', type=str2bool, default=False, help='apply class balance weight')
-
-
-        parser.add_argument('--balance', type=str2bool, help='apply class balance weight')
-        parser.add_argument('--sampler_type', type=str, default='stratified', choices=('over', 'stratified'))
-        parser.add_argument('--different_lr', type=str2bool, default=False, help='apply class balance weight')
-
-        parser.add_argument('--use_specific_final', type=str2bool, default=False)
-        parser.add_argument('--use_teacher', type=str2bool, default=False)
-        parser.add_argument('--use_student', type=str2bool, default=True)
-
-        # Weight Alpha
-        parser.add_argument('--alpha_ce', type=float, default=1.0)
-        parser.add_argument('--alpha_kd_repr', type=float, default=1000.0)
-
-        # Knowledge Distillation
-        parser.add_argument('--temperature', type=float, default=5.0)
-        parser.add_argument('--student_dir', type=str)
-        parser.add_argument('--student_position', type=str, default='last')
-
-        # TODO: student_level... cosine similarity between representations before GAP?
-        # parser.add_argument('--student_level', type=str, default='projector', choices=('extractor', 'projector'))
 
         return parser
