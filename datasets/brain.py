@@ -19,6 +19,7 @@ class BrainProcessor(object):
                  pet_type: str = 'FBP',
                  mci_only: bool = False,
                  use_unlabeled: bool = False,
+                 use_cdr: bool = True,
                  random_state: int = 2023,
                  **kwargs):
 
@@ -30,17 +31,23 @@ class BrainProcessor(object):
         self.pet_type = pet_type
         self.mci_only = mci_only
         self.use_unlabeled = use_unlabeled
+        self.use_cdr = use_cdr
         self.random_state = random_state
 
-        self.demo_columns = ['PTGENDER (1=male, 2=female)', 'Age', 'PTEDUCAT',
-                             'APOE Status', 'MMSCORE']
-                             # , 'CDGLOBAL', 'SUM BOXES']
+        # self.demo_columns = ['PTGENDER (1=male, 2=female)', 'Age', 'PTEDUCAT',
+        #                      'APOE Status', 'MMSCORE']
+        #                      # , 'CDGLOBAL', 'SUM BOXES']
+        self.demo_columns = ['Age', 'PTGENDER', 'CDGLOBAL', 'MMSCORE', 'APOE']
+        if not self.use_cdr:
+            self.demo_columns.remove('CDGLOBAL')
 
         self.current_missing_rate = None
 
     def process(self, validation_size: float = 0.1, test_size: float = 0.1, missing_rate: float = None):
 
         data = pd.read_csv(os.path.join(self.root, self.data_file), converters={'RID': str, 'Conv': int})
+        data = data.rename(columns={'PTGENDER (1=male, 2=female)': 'PTGENDER', 'APOE Status': 'APOE'})
+
         data = data.loc[data.IS_FILE]
         with open(os.path.join(self.root, 'labels/mri_abnormal.pkl'), 'rb') as fb:
             mri_abnormal = pickle.load(fb)
@@ -185,16 +192,16 @@ class BrainProcessor(object):
         data_demo = data[['RID', 'Conv'] + self.demo_columns]
 
         # 1. Gender
-        if 'PTGENDER (1=male, 2=female)' in self.demo_columns:
+        if 'PTGENDER' in self.demo_columns:
             data_demo_ = data_demo.copy()
-            data_demo_['PTGENDER (1=male, 2=female)'] = data_demo_['PTGENDER (1=male, 2=female)'] - 1
+            data_demo_['PTGENDER'] = data_demo_['PTGENDER'] - 1
             data_demo = data_demo_.copy()
 
         # 2. APOE Status
-        if 'APOE Status' in self.demo_columns:
+        if 'APOE' in self.demo_columns:
             data_demo_ = data_demo.copy()
-            data_demo_.loc[:, 'APOE Status'] = data_demo['APOE Status'].fillna('NC')
-            data_demo_['APOE Status'] = [0 if a == 'NC' else 1 for a in data_demo_['APOE Status'].values]
+            data_demo_.loc[:, 'APOE'] = data_demo['APOE'].fillna('NC')
+            data_demo_['APOE'] = [0 if a == 'NC' else 1 for a in data_demo_['APOE'].values]
             data_demo = data_demo_.copy()
 
         # 3. Others
@@ -324,9 +331,9 @@ if __name__ == '__main__':
                                data_file='labels/data_info_multi.csv',
                                pet_type='FBP',
                                mci_only=True,
-                               use_unlabeled=True,
+                               use_unlabeled=False,
                                random_state=2023)
-    datasets = processor.process(validation_size=0.1, test_size=0.1, missing_rate=0.40)
+    datasets = processor.process(validation_size=0.1, test_size=0.1, missing_rate=None)
 
     for k, v in datasets.items():
         print(k, f": {len(v['y'])} observations")
