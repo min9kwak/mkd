@@ -11,6 +11,7 @@ DIFFERENT_LR_DEMO=False
 EPOCHS=10
 LEARNING_RATE=0.0001
 USE_CDR=True
+SCALE_DEMO=True
 
 if [ "$TASK_TYPE" == "multi" ]; then
     PRETRAINED_FILE_PRE="checkpoints/BestMulti-FBP/"
@@ -33,8 +34,8 @@ for HASH in "${HASHS[@]}"; do
   for LEARNING_RATE in 0.001 0.0001; do
     for DIFFERENT_LR_DEMO in True False; do
       for HIDDEN_DEMO in "4,4" "3"; do
-        for EPOCHS in 10; do
-          for USE_CDR in True False; do
+        for SCALE_DEMO in True False; do
+          for USE_CDR in True; do
             PRETRAINED_DIR="${PRETRAINED_FILE_PRE}${HASH}"
             python ./run_finetune_demo.py \
             --gpus $GPUS \
@@ -48,6 +49,7 @@ for HASH in "${HASHS[@]}"; do
             --cosine_warmup 0 \
             --different_lr_demo $DIFFERENT_LR_DEMO \
             --use_cdr $USE_CDR \
+            --scale_demo $SCALE_DEMO \
             --hidden_demo=$HIDDEN_DEMO
           done
         done

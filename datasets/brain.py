@@ -9,6 +9,7 @@ import torch
 from torch.utils.data import Dataset
 from sklearn.model_selection import train_test_split
 from sklearn.utils import class_weight
+from sklearn.preprocessing import MinMaxScaler
 
 
 class BrainProcessor(object):
@@ -20,6 +21,7 @@ class BrainProcessor(object):
                  mci_only: bool = False,
                  use_unlabeled: bool = False,
                  use_cdr: bool = True,
+                 scale_demo: bool = True,
                  random_state: int = 2023,
                  **kwargs):
 
@@ -32,6 +34,7 @@ class BrainProcessor(object):
         self.mci_only = mci_only
         self.use_unlabeled = use_unlabeled
         self.use_cdr = use_cdr
+        self.scale_demo = scale_demo
         self.random_state = random_state
 
         # self.demo_columns = ['PTGENDER (1=male, 2=female)', 'Age', 'PTEDUCAT',
@@ -153,6 +156,16 @@ class BrainProcessor(object):
             complete_train = pd.concat([complete_train, u_complete_train]).reset_index(drop=True)
             incomplete_train = pd.concat([incomplete_train, u_incomplete_train]).reset_index(drop=True)
             total_mri_train = pd.concat([total_mri_train, u_data]).reset_index(drop=True)
+
+        # Additional Step: scale demo
+        if self.scale_demo:
+            scaler = MinMaxScaler()
+
+            total_mri_train[self.demo_columns] = scaler.fit_transform(total_mri_train[self.demo_columns])
+            complete_train[self.demo_columns] = scaler.transform(complete_train[self.demo_columns])
+            incomplete_train[self.demo_columns] = scaler.transform(incomplete_train[self.demo_columns])
+            complete_validation[self.demo_columns] = scaler.transform(complete_validation[self.demo_columns])
+            complete_test[self.demo_columns] = scaler.transform(complete_test[self.demo_columns])
 
         # 5. Parse
         mri_pet_complete_train = self.parse_data(complete_train)
@@ -332,6 +345,8 @@ if __name__ == '__main__':
                                pet_type='FBP',
                                mci_only=True,
                                use_unlabeled=False,
+                               use_cdr=True,
+                               scale_demo=True,
                                random_state=2023)
     datasets = processor.process(validation_size=0.1, test_size=0.1, missing_rate=None)
 
@@ -369,13 +384,3 @@ if __name__ == '__main__':
         print(batch['y'])
         print(batch_mri['y'])
         break
-    len(train_loader)
-    len(train_mri_loader)
-
-    x_mri = torch.concat(batch['mri']).float()
-    x_mri_in = torch.concat(batch_mri['mri']).float()
-    y = batch['y'].long().repeat(33)
-    y_in = batch_mri['y'].long().repeat(33)
-
-    torch.concat([x_mri, x_mri_in]).shape
-    torch.concat([y, y_in]).shape

@@ -124,6 +124,7 @@ def main_worker(local_rank: int, config: argparse.Namespace, pretrained_config: 
                                mci_only=pretrained_config.mci_only,
                                use_unlabeled=False,
                                use_cdr=config.use_cdr,
+                               scale_demo=config.scale_demo,
                                random_state=pretrained_config.random_state)
     datasets_dict = processor.process(validation_size=pretrained_config.validation_size,
                                       test_size=pretrained_config.test_size,
