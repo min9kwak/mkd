@@ -43,7 +43,10 @@ def main():
     if config.task_type == 'multi':
         setattr(config, 'use_specific_final', pretrained_config.use_specific_final)
 
-    # inherit pretrained configs
+    # inherit
+    setattr(config, 'random_state', pretrained_config.random_state)
+
+    # define task
     config.task = f'{config.task_type}_demo'
 
     if config.server == 'main':
@@ -196,6 +199,13 @@ def main_worker(local_rank: int, config: argparse.Namespace, pretrained_config: 
     if local_rank == 0:
         rich.print(config.__dict__)
         config.save()
+
+        # save pretrained config
+        save_path = os.path.join(config.checkpoint_dir, 'configs_pretrained.json')
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        with open(save_path, 'w') as f:
+            json.dump(pretrained_config, f, indent=2)
+
 
     # Loss Function
     # Cross Entropy
