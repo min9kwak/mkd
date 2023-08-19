@@ -14,7 +14,7 @@ import torch.nn as nn
 from configs.slice.finetune_demo import SliceFinetuneDemo
 from tasks.slice.finetune_demo import DemoClassification
 
-from datasets.brain import BrainProcessor, BrainMulti
+from datasets.brain import BrainProcessor, BrainMulti, BrainMRI
 from datasets.slice.transforms import make_mri_transforms, make_pet_transforms
 from models.slice.build import build_networks_general_teacher
 from models.slice.demo import DemoEncoder, LinearDemoClassifier
@@ -41,7 +41,11 @@ def main():
     setattr(pretrained_config, 'pretrained_file', pretrained_file)
 
     if config.task_type == 'multi':
-        setattr(config, 'use_specific_final', pretrained_config.use_specific_final)
+        if hasattr(pretrained_config, 'use_specific_final'):
+            setattr(config, 'use_specific_final', pretrained_config.use_specific_final)
+        else:
+            setattr(pretrained_config, 'use_specific_final', False)
+            setattr(config, 'use_specific_final', False)
 
     # inherit
     setattr(config, 'random_state', pretrained_config.random_state)
@@ -125,15 +129,22 @@ def main_worker(local_rank: int, config: argparse.Namespace, pretrained_config: 
                                       test_size=pretrained_config.test_size,
                                       missing_rate=pretrained_config.missing_rate)
 
-    train_set = BrainMulti(dataset=datasets_dict['mri_pet_complete_train'],
-                           mri_transform=train_transform_mri,
-                           pet_transform=train_transform_pet)
-    validation_set = BrainMulti(dataset=datasets_dict['mri_pet_complete_validation'],
-                                mri_transform=test_transform_mri,
-                                pet_transform=test_transform_pet)
-    test_set = BrainMulti(dataset=datasets_dict['mri_pet_complete_test'],
-                          mri_transform=test_transform_mri,
-                          pet_transform=test_transform_pet)
+    if config.task_type == 'multi':
+        train_set = BrainMulti(dataset=datasets_dict['mri_pet_complete_train'],
+                               mri_transform=train_transform_mri,
+                               pet_transform=train_transform_pet)
+        validation_set = BrainMulti(dataset=datasets_dict['mri_pet_complete_validation'],
+                                    mri_transform=test_transform_mri,
+                                    pet_transform=test_transform_pet)
+        test_set = BrainMulti(dataset=datasets_dict['mri_pet_complete_test'],
+                              mri_transform=test_transform_mri,
+                              pet_transform=test_transform_pet)
+    elif config.task_type == 'single':
+        train_set = BrainMRI(dataset=datasets_dict['mri_total_train'], mri_transform=train_transform_mri)
+        validation_set = BrainMRI(dataset=datasets_dict['mri_pet_complete_validation'], mri_transform=test_transform_mri)
+        test_set = BrainMRI(dataset=datasets_dict['mri_pet_complete_test'], mri_transform=test_transform_mri)
+    else:
+        raise ValueError
 
     datasets = {'train': train_set, 'validation': validation_set, 'test': test_set}
 
