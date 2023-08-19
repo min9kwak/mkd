@@ -202,7 +202,7 @@ def main_worker(local_rank: int, config: argparse.Namespace, pretrained_config: 
     class_weight = None
     if pretrained_config.balance:
         class_weight = torch.tensor(processor.class_weight_pet, dtype=torch.float).to(local_rank)
-    loss_function_ce = nn.CrossEntropyLoss(weight=class_weight, reduction='sum', ignore_index=-1)
+    loss_function_ce = nn.CrossEntropyLoss(weight=class_weight, reduction='mean', ignore_index=-1)
 
     # Model (Task)
     model = DemoClassification(networks=networks, task_type=config.task_type)
