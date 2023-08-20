@@ -14,7 +14,7 @@ class AOProcessor(object):
     def __init__(self,
                  root: str = 'D:/data',
                  data_info: str = 'aibl_oasis_data_info.csv',
-                 data_type: str = 'mri',
+                 external_data_type: str = 'mri',
                  use_cdr: bool = True,
                  scale_demo: bool = True,
                  random_state: int = 2021):
@@ -28,9 +28,14 @@ class AOProcessor(object):
         if not self.use_cdr:
             self.demo_columns.remove('CDGLOBAL')
 
-        # TODO: pib -> pet with argument (switching pib and av45)
-        assert data_type in ['mri', 'mri+pib']
-        self.data_type = data_type
+        assert external_data_type in ['mri', 'mri+pib', 'mri+av45']
+        self.external_data_type = external_data_type
+        if 'pib' in external_data_type:
+            self.pet_tracer = 'PIB'
+        elif 'av45' in external_data_type:
+            self.pet_tracer = 'AV45'
+        else:
+            self.pet_tracer = None
 
         # read data_info
         data_info = os.path.join(root, data_info)
@@ -54,8 +59,10 @@ class AOProcessor(object):
                 data_info.loc[i, col] = value
 
         # data_type filtering
-        if data_type == 'mri+pib':
+        if self.pet_tracer == 'PIB':
             data_info = data_info.loc[~data_info['PIB Path'].isna()].reset_index(drop=True)
+        elif self.pet_tracer == 'AV45':
+            data_info = data_info.loc[~data_info['AV45 Path'].isna()].reset_index(drop=True)
 
         self.data_info = data_info
 
@@ -101,56 +108,73 @@ class AOProcessor(object):
         return datasets
 
     def parse_info(self, data_info):
-        mri_files, pib_files = [], []
+        mri_files, pet_files = [], []
         for i, row in data_info.iterrows():
-            mri_path, pib_path, source = row[['MR Path', 'PIB Path', 'Source']]
+            if self.pet_tracer is not None:
+                mri_path, pet_path, source = row[['MR Path', f'{self.pet_tracer} Path', 'Source']]
+            else:
+                mri_path, source = row[['MR Path', 'Source']]
+                pet_path = None
             if type(mri_path) == str:
                 mri_path = os.path.join(self.root, source, 'template', 'MRI', mri_path)
-            if type(pib_path) == str:
-                pib_path = os.path.join(self.root, source, 'template', 'PIB', pib_path)
-            mri_files.append(mri_path), pib_files.append(pib_path)
+            if type(pet_path) == str:
+                pet_path = os.path.join(self.root, source, 'template', f'{self.pet_tracer}', pet_path)
+            mri_files.append(mri_path), pet_files.append(pet_path)
+
         y = data_info['Conv'].values
         demo = data_info[self.demo_columns].values
-        return dict(mri_files=mri_files, pib_files=pib_files, demo=demo, y=y)
+        source = data_info['Source'].values
+        source = [0 if s == 'AIBL' else 1 for s in source]
+        return dict(mri_files=mri_files, pet_files=pet_files, source=source, demo=demo, y=y)
 
-# TODO: make base, single, multi
+
 class AODataset(Dataset):
 
     def __init__(self,
                  dataset: dict,
-                 data_type: str,
-                 transform,
+                 external_data_type: str,
+                 mri_transform,
+                 pet_transform,
                  **kwargs):
-        assert data_type in ['mri', 'mri+pib']
-        self.data_type = data_type
-        self.mri_files = dataset['mri_files'] if 'mri' in data_type else None
-        self.pib_files = dataset['pib_files'] if 'pib' in data_type else None
+        assert external_data_type in ['mri', 'mri+pib', 'mri+av45']
+        self.external_data_type = external_data_type
+        self.mri_files = dataset['mri_files'] if 'mri' in external_data_type else None
 
-        if 'pib' in data_type:
-            assert all(isinstance(item, str) for item in self.pib_files)
+        if ('pib' in external_data_type) or ('av45' in external_data_type):
+            self.pet_files = dataset['pet_files']
+            self.use_pet = True
+        else:
+            self.pet_files = None
+            self.use_pet = False
+
+        if self.use_pet:
+            assert all(isinstance(item, str) for item in self.pet_files)
 
         self.demo = dataset['demo']
+        self.source = dataset['source']
         self.y = dataset['y']
-        self.transform = transform
+        self.mri_transform = mri_transform
+        self.pet_transform = pet_transform
 
     def __getitem__(self, idx):
 
-        mri = self.load_image(path=self.mri_files[idx])
-        if self.transform is not None:
-            mri = self.transform(mri)
-
-        if 'pib' in self.data_type:
-            pib = self.load_image(path=self.pib_files[idx])
-            if self.transform is not None:
-                pib = self.transform(pib)
-
         demo = self.demo[idx]
+        source = self.source[idx]
         y = self.y[idx]
 
-        if 'pib' in self.data_type:
-            return dict(mri=mri, pet=pib, demo=demo, y=y, idx=idx)
+        mri = self.load_image(path=self.mri_files[idx])
+        if self.mri_transform is not None:
+            mri = self.mri_transform(mri)
+
+        if self.use_pet:
+
+            pet = self.load_image(path=self.pet_files[idx])
+            if self.pet_transform is not None:
+                pet = self.pet_transform(pet)
+            return dict(mri=mri, pet=pet, demo=demo, source=source, y=y, idx=idx)
+
         else:
-            return dict(mri=mri, demo=demo, y=y, idx=idx)
+            return dict(mri=mri, demo=demo, source=source, y=y, idx=idx)
 
     @staticmethod
     def load_image(path):
@@ -164,8 +188,7 @@ class AODataset(Dataset):
 
 if __name__ == '__main__':
 
-    data_type = 'mri'
-    processor = AOProcessor(data_type=data_type)
+    processor = AOProcessor(external_data_type='mri+pib')
     datasets = processor.process(5, 0, test_only=True)
 
     from datasets.slice.transforms import make_mri_transforms
@@ -178,12 +201,20 @@ if __name__ == '__main__':
                                                           blur_std_mri=None,
                                                           train_slices='fixed',
                                                           prob=0.5)
-    test_set = AODataset(dataset=datasets['test'], data_type=data_type, transform=train_transform)
+    test_set = AODataset(dataset=datasets['test'], external_data_type='mri+av45',
+                         mri_transform=train_transform, pet_transform=train_transform)
 
     from torch.utils.data import DataLoader
     import tqdm
 
     test_loader = DataLoader(dataset=test_set, batch_size=4,
-                             sampler=None, drop_last=True)
+                             sampler=None, drop_last=False)
     for batch in tqdm.tqdm(test_loader):
         ''
+    batch.keys()
+    batch['mri'][0].shape
+    batch['demo']
+    batch['y']
+    batch['idx']
+    batch['pet'][0].shape
+    datasets['test']['source']
