@@ -224,20 +224,58 @@ def classification_result(y_true, y_pred, adjusted=False):
                 f1=f1_, gmean=gmean_)
 
 
+def classification_result_by_source(y_true, y_pred, adjusted=False, source=None):
+
+    results = {}
+
+    results['overall'] = classification_result(y_true, y_pred, adjusted=adjusted)
+
+    unique_sources = np.unique(source)
+
+    for src in unique_sources:
+        filtered_y_true = np.array([yt for yt, s in zip(y_true, source) if s == src])
+        filtered_y_pred = np.array([yp for yp, s in zip(y_pred, source) if s == src])
+
+        # Compute classification result for the current source
+        results[f"source_{src}"] = classification_result(filtered_y_true, filtered_y_pred, adjusted)
+
+    return results
+
+
+def flatten_results(results, prefix=''):
+    flattened = {}
+    for key, value in results.items():
+        if isinstance(value, dict):  # Nested dictionary
+            deeper_prefix = f"{prefix}/{key}" if prefix else key
+            flattened.update(flatten_results(value, deeper_prefix))
+        else:  # Single value
+            flattened_key = f"{prefix}/{key}" if prefix else key
+            flattened[flattened_key] = value
+    return flattened
+
+
 if __name__ == '__main__':
-    targets = torch.LongTensor([2, 2, 0, 2, 1, 1, 1])
+    targets = torch.LongTensor([1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0])
+    sources = torch.LongTensor([1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1])
     predictions = torch.FloatTensor(
         [
-            [1, 2, 7],  # 2
-            [1, 3, 7],  # 2
-            [3, 9, 0],  # 1
-            [1, 2, 3],  # 2
-            [3, 7, 0],  # 1
-            [8, 1, 1],  # 0
-            [9, 1, 1],  # 0
+            [1, 2],  # 1
+            [1, 3],  # 1
+            [3, 9],  # 1
+            [1, 2],  # 1
+            [3, 7],  # 1
+            [8, 1],  # 0
+            [9, 1],  # 0
+            [1, 2],  # 1
+            [3, 7],  # 1
+            [8, 1],  # 0
+            [9, 1],  # 0
         ]
     )
+    predictions = predictions.float()
+    predictions = predictions.softmax(1).numpy()
+    targets = targets.numpy()
+    sources = sources.numpy()
 
-    f1_function = MultiF1Score(num_classes=3, average='macro')
-    f1_val = f1_function(logits=predictions, labels=targets)
-    print(f1_val)
+    classification_result(targets, predictions, False)
+    classification_result_by_source(targets, predictions, False, sources)
