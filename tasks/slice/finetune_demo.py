@@ -290,7 +290,6 @@ class DemoClassification(object):
         return loss_ce, y, logit
 
     def _set_learning_phase(self, train: bool = True):
-        # Teacher is fixed to eval mode
         for name in self.networks.keys():
             if train:
                 self.networks[name].train()
