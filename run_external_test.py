@@ -94,44 +94,7 @@ def main():
     else:
         rich.print(f"Single GPU training.")
 
-        if config.train_mode == 'train':
-            y_true_final, y_pred_final, sources_final = [], [], []
-            for n_cv in range(config.n_splits):
-                # single machine, single gpu
-                setattr(config, 'n_cv', n_cv)
-                y_true, y_pred, sources = main_worker(0, config, pretrained_config, demo_config)
-                y_true_final.append(y_true)
-                y_pred_final.append(y_pred)
-                sources_final.append(sources)
-
-            y_true_final = torch.cat(y_true_final, dim=0)
-            y_pred_final = torch.cat(y_pred_final, dim=0).to(torch.float32)
-            sources_final = torch.cat(sources_final)
-
-            clf_result = classification_result_by_source(y_true=y_true_final.cpu().numpy(),
-                                                         y_pred=y_pred_final.softmax(1).detach().cpu().numpy(),
-                                                         adjusted=False,
-                                                         source=sources_final.detach().cpu().numpy())
-            clf_result_adj = classification_result_by_source(y_true=y_true_final.cpu().numpy(),
-                                                             y_pred=y_pred_final.softmax(1).detach().cpu().numpy(),
-                                                             adjusted=True,
-                                                             source=sources_final.detach().cpu().numpy())
-
-            final_history = flatten_results(results={'final': clf_result, 'final-adjusted': clf_result_adj})
-
-            if config.enable_wandb:
-                wandb.init(
-                    name=f'{config.task} : {config.hash} : {config.n_cv}',
-                    project=f'incomplete-external_test',
-                    config=config.__dict__
-                )
-                wandb.log(final_history)
-
-        else:
-            y_true_final, y_pred_final, sources_final = main_worker(0, config, pretrained_config, demo_config)
-
-        # save testing results (TODO: include index)
-
+        main_worker(0, config, pretrained_config, demo_config)
 
 
 def main_worker(local_rank: int, config: argparse.Namespace, pretrained_config: edict, demo_config: edict = None):

@@ -74,7 +74,7 @@ class AOProcessor(object):
         # demographic scaling
         if self.scale_demo:
             scaler = MinMaxScaler()
-            test_info[self.demo_columns] = scaler.transform(test_info[self.demo_columns])
+            test_info[self.demo_columns] = scaler.fit_transform(test_info[self.demo_columns])
 
         # parsing
         # parse to make paths
