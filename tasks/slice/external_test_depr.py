@@ -143,18 +143,46 @@ class ExternalTest(object):
         best_epoch = 0
 
         # Supervised training
-        epoch = 1
-        with torch.no_grad():
-            test_history = self.train(loaders['test'], train=False, adjusted=False)
-        epoch_history = flatten_results(results={'test': test_history})
+        if self.config.train_mode == 'train':
+            for epoch in range(1, self.epochs + 1):
 
-        if self.enable_wandb:
-            wandb.log({'epoch': epoch}, commit=False)
-            if self.scheduler is not None:
-                wandb.log({'lr': self.scheduler.get_last_lr()[0]}, commit=False)
-            else:
-                wandb.log({'lr': self.optimizer.param_groups[0]['lr']}, commit=False)
-            wandb.log(epoch_history)
+                # Train & evaluate
+                train_history = self.train(loaders['train'], train=True, adjusted=False)
+                with torch.no_grad():
+                    test_history = self.train(loaders['test'], train=False, adjusted=False)
+
+                # Logging
+                epoch_history = flatten_results(results={'train': train_history, 'test': test_history})
+
+                if self.enable_wandb:
+                    wandb.log({'epoch': epoch}, commit=False)
+                    if self.scheduler is not None:
+                        wandb.log({'lr': self.scheduler.get_last_lr()[0]}, commit=False)
+                    else:
+                        wandb.log({'lr': self.optimizer.param_groups[0]['lr']}, commit=False)
+                    wandb.log(epoch_history)
+
+                # Update learning rate
+                if self.scheduler is not None:
+                    self.scheduler.step()
+
+            # Save final model checkpoint
+            ckpt = os.path.join(self.checkpoint_dir, f"ckpt.last.pth.tar")
+            self.save_checkpoint(ckpt, epoch=epoch)
+
+        else:
+            epoch = 1
+            with torch.no_grad():
+                test_history = self.train(loaders['test'], train=False, adjusted=False)
+            epoch_history = flatten_results(results={'test': test_history})
+
+            if self.enable_wandb:
+                wandb.log({'epoch': epoch}, commit=False)
+                if self.scheduler is not None:
+                    wandb.log({'lr': self.scheduler.get_last_lr()[0]}, commit=False)
+                else:
+                    wandb.log({'lr': self.optimizer.param_groups[0]['lr']}, commit=False)
+                wandb.log(epoch_history)
 
         # adjusted evaluation
         with torch.no_grad():
@@ -207,7 +235,7 @@ class ExternalTest(object):
                 logit = logit.reshape(self.pretrained_config.num_slices, -1, num_classes).mean(0)
                 y_pred.append(logit)
 
-                source = source.long()
+                source = source.chunk(self.pretrained_config.num_slices)[0].long()
                 sources.append(source)
 
         result = {k: v.mean().item() for k, v in result.items()}
@@ -233,7 +261,7 @@ class ExternalTest(object):
 
         x_mri = torch.concat(batch['mri']).float().to(self.local_rank)
         x_pet = torch.concat(batch['pet']).float().to(self.local_rank)
-        source = batch['source'].long()
+        source = batch['source'].long().repeat(self.pretrained_config.num_slices)
         y = batch['y'].long().repeat(self.pretrained_config.num_slices).to(self.local_rank)
 
         # forward through final multi
@@ -267,7 +295,7 @@ class ExternalTest(object):
 
         x_mri = torch.concat(batch['mri']).float().to(self.local_rank)
         source = batch['source'].long().repeat(self.pretrained_config.num_slices)
-        y = batch['y'].long()
+        y = batch['y'].long().repeat(self.pretrained_config.num_slices).to(self.local_rank)
 
         # forward through final multi
         h_mri = self.networks['projector_mri_s'](self.networks['extractor_mri_s'](x_mri))

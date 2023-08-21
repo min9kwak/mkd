@@ -66,25 +66,44 @@ class AOProcessor(object):
 
         self.data_info = data_info
 
-    def process(self):
+    def process(self, n_splits=10, n_cv=0, test_only=False):
 
         # split
-        test_info = self.data_info.copy()
+        rid = self.data_info['RID'].tolist()
+        conv = self.data_info['Conv'].tolist()
+        assert 0 <= n_cv < n_splits
+
+        cv = StratifiedGroupKFold(n_splits=n_splits, shuffle=True, random_state=2021)
+
+        train_idx_list, test_idx_list = [], []
+        for train_idx, test_idx in cv.split(X=rid, y=conv, groups=rid):
+            train_idx_list.append(train_idx)
+            test_idx_list.append(test_idx)
+        train_idx, test_idx = train_idx_list[n_cv], test_idx_list[n_cv]
+
+        train_info = self.data_info.iloc[train_idx].reset_index(drop=True)
+        test_info = self.data_info.iloc[test_idx].reset_index(drop=True)
 
         # demographic scaling
         if self.scale_demo:
             scaler = MinMaxScaler()
+            train_info[self.demo_columns] = scaler.fit_transform(train_info[self.demo_columns])
             test_info[self.demo_columns] = scaler.transform(test_info[self.demo_columns])
 
         # parsing
         # parse to make paths
+        train_data = self.parse_info(train_info)
         test_data = self.parse_info(test_info)
 
         # set class weight
         self.class_weight = class_weight.compute_class_weight(class_weight='balanced',
-                                                              classes=np.unique(test_data['y']),
-                                                              y=test_data['y'])
-        datasets = {'train': None, 'test': test_data}
+                                                              classes=np.unique(train_data['y']),
+                                                              y=train_data['y'])
+        if test_only:
+            test_data.update(train_data)
+            train_data = None
+
+        datasets = {'train': train_data, 'test': test_data}
 
         return datasets
 
@@ -170,7 +189,7 @@ class AODataset(Dataset):
 if __name__ == '__main__':
 
     processor = AOProcessor(external_data_type='mri')
-    datasets = processor.process()
+    datasets = processor.process(5, 0, test_only=True)
 
     from datasets.slice.transforms import make_mri_transforms
     train_transform, test_transform = make_mri_transforms(image_size_mri=72,

@@ -181,7 +181,7 @@ def main_worker(local_rank: int, config: argparse.Namespace, pretrained_config: 
                             external_data_type=config.external_data_type, use_cdr=config.use_cdr,
                             scale_demo=config.scale_demo, random_state=config.random_state)
     test_only = True if config.train_mode == 'test' else False
-    datasets_dict = processor.process(n_splits=config.n_splits, n_cv=config.n_cv, test_only=test_only)
+    datasets_dict = processor.process()
 
     if not test_only:
         train_set = AODataset(dataset=datasets_dict['train'], external_data_type=config.external_data_type,
