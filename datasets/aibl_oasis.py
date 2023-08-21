@@ -13,7 +13,7 @@ from sklearn.preprocessing import MinMaxScaler
 class AOProcessor(object):
     def __init__(self,
                  root: str = 'D:/data',
-                 data_info: str = 'aibl_oasis_data_info.csv',
+                 data_info: str = 'aibl_oasis_data_info_new.csv',
                  external_data_type: str = 'mri',
                  use_cdr: bool = True,
                  scale_demo: bool = True,
@@ -51,7 +51,7 @@ class AOProcessor(object):
 
         # preprocess demo
         cols = ['MMSCORE', 'CDGLOBAL']
-        records = data_info.groupby('Conv').mean()[cols].to_dict()
+        records = data_info[cols + ['Conv']].groupby('Conv').mean()[cols].to_dict()
         for col in cols:
             nan_index = data_info.index[data_info[col].isna()]
             for i in nan_index:
@@ -188,7 +188,7 @@ class AODataset(Dataset):
 
 if __name__ == '__main__':
 
-    processor = AOProcessor(external_data_type='mri+pib')
+    processor = AOProcessor(external_data_type='mri+av45')
     datasets = processor.process(5, 0, test_only=True)
 
     from datasets.slice.transforms import make_mri_transforms

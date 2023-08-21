@@ -128,7 +128,10 @@ def main():
                 wandb.log(final_history)
 
         else:
-            _, _, _ = main_worker(0, config, pretrained_config, demo_config)
+            y_true_final, y_pred_final, sources_final = main_worker(0, config, pretrained_config, demo_config)
+
+        # save testing results (TODO: include index)
+
 
 
 def main_worker(local_rank: int, config: argparse.Namespace, pretrained_config: edict, demo_config: edict = None):
@@ -174,7 +177,7 @@ def main_worker(local_rank: int, config: argparse.Namespace, pretrained_config: 
         setattr(config, 'use_cdr', demo_config.use_cdr)
         setattr(config, 'scale_demo', demo_config.scale_demo)
 
-    processor = AOProcessor(root=config.root, data_info='aibl_oasis_data_info.csv',
+    processor = AOProcessor(root=config.root, data_info=config.data_info,
                             external_data_type=config.external_data_type, use_cdr=config.use_cdr,
                             scale_demo=config.scale_demo, random_state=config.random_state)
     test_only = True if config.train_mode == 'test' else False

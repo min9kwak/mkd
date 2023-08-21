@@ -13,6 +13,7 @@ class SliceExternalTestConfig(ConfigBase):
         """Returns an `argparse.ArgumentParser` instance containing data-related arguments."""
 
         parser = argparse.ArgumentParser("Data", add_help=False)
+        parser.add_argument('--data_info', type=str, default='aibl_oasis_data_info_new.csv')
         parser.add_argument('--n_splits', type=int, default=5)
         parser.add_argument('--n_cv', type=int, default=0)
 
