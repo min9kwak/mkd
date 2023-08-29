@@ -26,10 +26,12 @@ class IMKD:
         self.networks = None
         self.networks_single = None
         self.networks_teacher = None
-        self.networks_kd = None
+        self.networks_imkd = None
         self.networks_multi = None
         self.optimizer = None
         self.scheduler = None
+        self.optimizer_s = None
+        self.scheduler_s = None
         self.train_mode = None
         self.train_params = None
         self.use_specific_final = None
@@ -185,93 +187,43 @@ class IMKD:
 
         # 3. Knowledge Distillation
         if 3 in self.config.train_level:
-            self.train_mode = 'kd'
-            self.train_params = copy.deepcopy(self.config.train_params[self.train_mode])
-            self.create_network_optimizer(train_mode=self.train_mode, train_params=self.train_params)
 
-            # train
-            with get_rich_pbar(transient=True, auto_refresh=False) as pg:
-                task = pg.add_task(f"[bold red] Training KD...")
-                for epoch in tqdm.tqdm(range(1, self.train_params['epochs'] + 1),
-                                       total=max(len(loaders['train_complete']), len(loaders['train_incomplete'])),
-                                       desc='Training KD'):
-                    self.epoch = epoch
-                    train_history = self.train_kd(loaders['train_complete'],
-                                                  loaders['train_incomplete'],
-                                                  train=True,
-                                                  adjusted=False)
-                    with torch.no_grad():
-                        test_history = self.train_kd(loaders['test'], loaders['test'], train=False, adjusted=False)
-
-                    epoch_history = self.make_epoch_history(train_history=train_history,
-                                                            test_history=test_history,
-                                                            adjusted=False)
-                    if self.config.enable_wandb:
-                        wandb.log({'epoch_kd': epoch}, commit=False)
-                        if self.scheduler is not None:
-                            wandb.log({'lr_kd': self.scheduler.get_last_lr()[0]}, commit=False)
-                        else:
-                            wandb.log({'lr_kd': self.optimizer.param_groups[0]['lr']}, commit=False)
-                        wandb.log(epoch_history)
-
-                    if self.save_log:
-                        self.logs[self.train_mode][epoch] = epoch_history
-                    desc = f"[bold green] Training KD... Epoch {self.epoch} / {self.train_params['epochs']}"
-                    pg.update(task, advance=1.0, description=desc)
-                    pg.refresh()
-
-                    # update learning rate
-                    if self.scheduler is not None:
-                        self.scheduler.step()
-            del pg
-
-            # last & adjusted
-            with torch.no_grad():
-                adjusted_history = self.train_kd(loaders['test'], loaders['test'], train=False, adjusted=True)
-            adjusted_history = self.make_epoch_history(train_history=None,
-                                                       test_history=adjusted_history,
-                                                       adjusted=True)
-            if self.config.enable_wandb:
-                wandb.log(adjusted_history)
-            if self.save_log:
-                self.logs[self.train_mode]['adjusted'] = adjusted_history
-
-            # save network
-            self.networks_kd = self.networks
-
-        # 4. Final Multi-Modal
-        if 4 in self.config.train_level:
-
-            for use_specific_final in [True, False]:
+            for use_specific_final in [False, True]:
                 self.use_specific_final = use_specific_final
-                self.train_mode = 'final'
+                self.train_mode = 'imkd'
                 self.train_params = copy.deepcopy(self.config.train_params[self.train_mode])
                 self.create_network_optimizer(train_mode=self.train_mode, train_params=self.train_params)
 
                 # train
                 with get_rich_pbar(transient=True, auto_refresh=False) as pg:
-                    task = pg.add_task(f"[bold red] Training Final ({self.use_specific_final})...")
-                    for epoch in tqdm.tqdm(range(1, self.train_params['epochs'] + 1), total=len(loaders['train_complete']),
-                                           desc=f'Training Final ({self.use_specific_final})'):
+                    task = pg.add_task(f"[bold red] Training IMKD...")
+                    for epoch in tqdm.tqdm(range(1, self.train_params['epochs'] + 1),
+                                           total=max(len(loaders['train_complete']), len(loaders['train_incomplete'])),
+                                           desc='Training IMKD'):
                         self.epoch = epoch
-                        train_history = self.train_final(loaders['train_complete'], train=True, adjusted=False)
+                        train_history = self.train_imkd(loaders['train_complete'], loaders['train_incomplete'],
+                                                        train=True, adjusted=False)
                         with torch.no_grad():
-                            test_history = self.train_final(loaders['test'], train=False, adjusted=False)
+                            test_history = self.train_imkd(loaders['test'], loaders['test'],
+                                                           train=False, adjusted=False)
 
                         epoch_history = self.make_epoch_history(train_history=train_history,
                                                                 test_history=test_history,
                                                                 adjusted=False)
                         if self.config.enable_wandb:
-                            wandb.log({f'epoch_final_{use_specific_final}': epoch}, commit=False)
+                            wandb.log({f'epoch_imkd_{use_specific_final}': epoch}, commit=False)
                             if self.scheduler is not None:
-                                wandb.log({f'lr_final_{use_specific_final}': self.scheduler.get_last_lr()[0]}, commit=False)
+                                wandb.log({f'lr_imkd_t2s_{use_specific_final}': self.scheduler.get_last_lr()[0]}, commit=False)
+                                wandb.log({f'lr_imkd_s2t_{use_specific_final}': self.scheduler_s.get_last_lr()[0]}, commit=False)
                             else:
-                                wandb.log({f'lr_final_{use_specific_final}': self.optimizer.param_groups[0]['lr']}, commit=False)
+                                wandb.log({f'lr_imkd_t2s_{use_specific_final}': self.optimizer.param_groups[0]['lr']}, commit=False)
+                                wandb.log({f'lr_imkd_s2t_{use_specific_final}': self.optimizer_s.param_groups[0]['lr']}, commit=False)
+
                             wandb.log(epoch_history)
 
                         if self.save_log:
                             self.logs[self.train_mode][epoch] = epoch_history
-                        desc = f"[bold green] Training Final ({self.use_specific_final})... " \
+                        desc = f"[bold green] Training IMKD (_{use_specific_final})... " \
                                f"Epoch {self.epoch} / {self.train_params['epochs']}"
                         pg.update(task, advance=1.0, description=desc)
                         pg.refresh()
@@ -279,11 +231,12 @@ class IMKD:
                         # update learning rate
                         if self.scheduler is not None:
                             self.scheduler.step()
+                            self.scheduler_s.step()
                 del pg
 
                 # last & adjusted
                 with torch.no_grad():
-                    adjusted_history = self.train_final(loaders['test'], train=False, adjusted=True)
+                    adjusted_history = self.train_imkd(loaders['test'], loaders['test'], train=False, adjusted=True)
                 adjusted_history = self.make_epoch_history(train_history=None,
                                                            test_history=adjusted_history,
                                                            adjusted=True)
@@ -292,8 +245,8 @@ class IMKD:
                 if self.save_log:
                     self.logs[f'{self.train_mode}-{use_specific_final}']['adjusted'] = adjusted_history
 
-        # 5. Multi-Modal
-        if 5 in self.config.train_level:
+        # 4. Multi-Modal
+        if 4 in self.config.train_level:
             self.train_mode = 'multi'
             self.train_params = copy.deepcopy(self.config.train_params[self.train_mode])
             self.create_network_optimizer(train_mode=self.train_mode, train_params=self.train_params)
@@ -485,11 +438,14 @@ class IMKD:
         return loss, loss_ce, loss_sim, loss_diff_specific, loss_diff_1, loss_diff_2,\
                loss_recon_1, loss_recon_2, y, logit
 
-    def train_kd(self, data_complete_loader, data_incomplete_loader, train=True, adjusted=False):
+    def train_imkd(self, data_complete_loader, data_incomplete_loader, train=True, adjusted=False):
 
-        self._set_learning_phase(train=train, train_mode='kd')
         steps = max(len(data_complete_loader), len(data_incomplete_loader))
-        metric_names = ['total_loss', 'loss_ce', 'loss_kd']
+        metric_names = ['total_loss_t2s', 'loss_ce_t2s', 'loss_kd_t2s',
+                        'total_loss_s2t', 'loss_ce_s2t', 'loss_sim_s2t',
+                        'loss_diff_specific_s2t', 'loss_diff_1_s2t', 'loss_diff_2_s2t',
+                        'loss_recon_1_s2t', 'loss_recon_2_s2t', 'loss_kd_s2t']
+
         result = {k: torch.zeros(steps, device=self.local_rank) for k in metric_names}
 
         # use cycle to extend short loader to be equal to long loader
@@ -501,39 +457,75 @@ class IMKD:
             long_loader, short_loader = data_incomplete_loader, data_complete_loader
         short_loader_cycle = cycle(short_loader)
 
-        y_true, y_pred = [], []
+        y_true_t2s, y_pred_t2s = [], []
+        y_true_s2t, y_pred_s2t = [], []
 
         for i, (batch_l, batch_s) in enumerate(zip(long_loader, short_loader_cycle)):
             if complete_is_long:
                 batch_c, batch_ic = batch_l, batch_s
             else:
                 batch_c, batch_ic = batch_s, batch_l
-            loss, loss_ce, loss_kd, y, logit = self.train_kd_step(batch_c, batch_ic)
+
+            # teacher to student (t2s)
+            loss, loss_ce, loss_kd, y, logit = self.train_imkd_step_t2s(batch_c, batch_ic, train=train)
+            if train:
+                self.update_s(loss)
+
+            # save
+            result['total_loss_t2s'][i] = loss.detach()
+            result['loss_ce_t2s'][i] = loss_ce.detach()
+            result['loss_kd_t2s'] = loss_kd.detach()
+
+            y_true_t2s.append(y)
+            y_pred_t2s.append(logit)
+
+            # student to teacher (s2t)
+            # TODO: if self.epoch > self.train_params['warm_up'] --- learning rate?
+            loss, loss_ce, loss_sim, loss_diff_specific, loss_diff_1, loss_diff_2, \
+            loss_recon_1, loss_recon_2, loss_kd, y, logit = self.train_imkd_step_s2t(batch_c, batch_ic, train=train)
             if train:
                 self.update(loss)
 
-            result['total_loss'][i] = loss.detach()
-            result['loss_ce'][i] = loss_ce.detach()
-            result['loss_kd'] = loss_kd.detach()
+            # save
+            result['total_loss_s2t'][i] = loss.detach()
+            result['loss_ce_s2t'][i] = loss_ce.detach()
+            result['loss_sim_s2t'][i] = loss_sim.detach()
+            result['loss_diff_specific_s2t'][i] = loss_diff_specific.detach()
+            result['loss_diff_1_s2t'][i] = loss_diff_1.detach()
+            result['loss_diff_2_s2t'][i] = loss_diff_2.detach()
+            result['loss_recon_1_s2t'][i] = loss_recon_1.detach()
+            result['loss_recon_2_s2t'][i] = loss_recon_2.detach()
+            result['loss_kd_s2t'][i] = loss_kd.detach()
 
-            y_true.append(y)
-            y_pred.append(logit)
+            y_true_s2t.append(y)
+            y_pred_s2t.append(logit)
 
         result = {k: v.mean().item() for k, v in result.items()}
 
         # enforce to float32: accuracy and macro f1 score
-        y_true = torch.cat(y_true, dim=0)
-        y_pred = torch.cat(y_pred, dim=0).to(torch.float32)
+        y_true_t2s = torch.cat(y_true_t2s, dim=0)
+        y_pred_t2s = torch.cat(y_pred_t2s, dim=0).to(torch.float32)
 
-        clf_result = classification_result(y_true=y_true.cpu().numpy(),
-                                           y_pred=y_pred.softmax(1).detach().cpu().numpy(),
-                                           adjusted=adjusted)
-        for k, v in clf_result.items():
-            result[k] = v
+        y_true_s2t = torch.cat(y_true_s2t, dim=0)
+        y_pred_s2t = torch.cat(y_pred_s2t, dim=0).to(torch.float32)
+
+        clf_result_t2s = classification_result(y_true=y_true_t2s.cpu().numpy(),
+                                               y_pred=y_pred_t2s.softmax(1).detach().cpu().numpy(),
+                                               adjusted=adjusted)
+        clf_result_s2t = classification_result(y_true=y_true_s2t.cpu().numpy(),
+                                               y_pred=y_pred_s2t.softmax(1).detach().cpu().numpy(),
+                                               adjusted=adjusted)
+
+        for k, v in clf_result_t2s.items():
+            result[f"{k}_t2s"] = v
+        for k, v in clf_result_s2t.items():
+            result[f"{k}_s2t"] = v
 
         return result
 
-    def train_kd_step(self, batch, batch_in):
+    def train_imkd_step_t2s(self, batch, batch_in, train):
+
+        self._set_learning_phase(train=train, train_mode='imkd', imkd_mode='t2s')
 
         # A. Complete Training
         x1 = batch['x1'].float().to(self.local_rank)
@@ -578,68 +570,11 @@ class IMKD:
 
         return loss, loss_ce, loss_kd_clf, y_total, logit_total
 
-    # def train_final_with_ul
-    def train_final_all(self, data_complete_loader, data_incomplete_loader, train=True, adjusted=False):
+    def train_imkd_step_s2t(self, batch, batch_in, train):
 
-        self._set_learning_phase(train=train, train_mode='final')
-        steps = max(len(data_complete_loader), len(data_incomplete_loader))
-        metric_names = ['total_loss', 'loss_ce', 'loss_sim',
-                        'loss_diff_specific', 'loss_diff_1', 'loss_diff_2',
-                        'loss_recon_1', 'loss_recon_2', 'loss_kd']
-        result = {k: torch.zeros(steps, device=self.local_rank) for k in metric_names}
+        self._set_learning_phase(train=train, train_mode='imkd', imkd_mode='s2t')
 
-        # use cycle to extend short loader to be equal to long loader
-        if len(data_complete_loader) >= len(data_incomplete_loader):
-            complete_is_long = True
-            long_loader, short_loader = data_complete_loader, data_incomplete_loader
-        else:
-            complete_is_long = False
-            long_loader, short_loader = data_incomplete_loader, data_complete_loader
-        short_loader_cycle = cycle(short_loader)
-
-        y_true, y_pred = [], []
-
-        for i, (batch_l, batch_s) in enumerate(zip(long_loader, short_loader_cycle)):
-            if complete_is_long:
-                batch_c, batch_ic = batch_l, batch_s
-            else:
-                batch_c, batch_ic = batch_s, batch_l
-            loss, loss_ce, loss_sim, loss_diff_specific, loss_diff_1, loss_diff_2, \
-            loss_recon_1, loss_recon_2, loss_kd, y, logit = self.train_final_all_step(batch_c, batch_ic)
-            if train:
-                self.update(loss)
-
-            # save
-            result['total_loss'][i] = loss.detach()
-            result['loss_ce'][i] = loss_ce.detach()
-            result['loss_sim'][i] = loss_sim.detach()
-            result['loss_diff_specific'][i] = loss_diff_specific.detach()
-            result['loss_diff_1'][i] = loss_diff_1.detach()
-            result['loss_diff_2'][i] = loss_diff_2.detach()
-            result['loss_recon_1'][i] = loss_recon_1.detach()
-            result['loss_recon_2'][i] = loss_recon_2.detach()
-            result['loss_kd'][i] = loss_kd.detach()
-
-            y_true.append(y)
-            y_pred.append(logit)
-
-        result = {k: v.mean().item() for k, v in result.items()}
-
-        # enforce to float32: accuracy and macro f1 score
-        y_true = torch.cat(y_true, dim=0)
-        y_pred = torch.cat(y_pred, dim=0).to(torch.float32)
-
-        clf_result = classification_result(y_true=y_true.cpu().numpy(),
-                                           y_pred=y_pred.softmax(1).detach().cpu().numpy(),
-                                           adjusted=adjusted)
-        for k, v in clf_result.items():
-            result[k] = v
-
-        return result
-
-    def train_final_all_step(self, batch, batch_in):
-
-        # complete batch
+        # A. Complete Training
         # input data
         x1 = batch['x1'].float().to(self.local_rank)
         x2 = batch['x2'].float().to(self.local_rank)
@@ -669,146 +604,41 @@ class IMKD:
         else:
             logit = self.networks['classifier'](z1_general + z2_general)
 
-        # incomplete batch
+        # Losses
+        # difference
+        loss_diff_specific = self.loss_function_diff(z1, z2)
+        loss_diff_1 = self.loss_function_diff(z1, z1_general)
+        loss_diff_2 = self.loss_function_diff(z2, z2_general)
+        loss_diff = loss_diff_specific + loss_diff_1 + loss_diff_2
+
+        # similarity
+        loss_sim = self.loss_function_sim(z1_general, z2_general)
+
+        # reconstruction
+        loss_recon_1 = self.loss_function_recon(h1_recon, h1)
+        loss_recon_2 = self.loss_function_recon(h2_recon, h2)
+        loss_recon = loss_recon_1 + loss_recon_2
+
+        # cross-entropy
+        loss_ce = self.loss_function_ce(logit, y)
+
+        # B. Incomplete Training
         x1_in = batch_in['x1'].float().to(self.local_rank)
+
+        # Teacher
+        h1_in = self.networks['extractor_1'](x1_in)
+
+        # Student
         with torch.no_grad():
-            h1_s_in = self.networks['extractor_1_s'](x1)
-
-        ########## TODO
-
-        # Losses
-        # difference
-        loss_diff_specific = self.loss_function_diff(z1, z2)
-        loss_diff_1 = self.loss_function_diff(z1, z1_general)
-        loss_diff_2 = self.loss_function_diff(z2, z2_general)
-        loss_diff = loss_diff_specific + loss_diff_1 + loss_diff_2
-
-        # similarity
-        loss_sim = self.loss_function_sim(z1_general, z2_general)
-
-        # reconstruction
-        loss_recon_1 = self.loss_function_recon(h1_recon, h1)
-        loss_recon_2 = self.loss_function_recon(h2_recon, h2)
-        loss_recon = loss_recon_1 + loss_recon_2
-
-        # cross-entropy
-        loss_ce = self.loss_function_ce(logit, y)
+            h1_s_in = self.networks['extractor_1_s'](x1_in)
 
         # knowledge distillation
-        h1_s_norm = F.normalize(h1_s, p=2, dim=1)
-        h1_norm = F.normalize(h1, p=2, dim=1)
+        h1_teacher = torch.concat([h1, h1_in])
+        h1_student = torch.concat([h1_s, h1_s_in])
+        h1_teacher_norm = F.normalize(h1_teacher, p=2, dim=1)
+        h1_student_norm = F.normalize(h1_student, p=2, dim=1)
 
-        cos = torch.einsum('nc,nc->n', [h1_s_norm, h1_norm])
-        loss_kd = (1 - cos) / (2 * self.config.temperature ** 2)
-        loss_kd = loss_kd.mean()
-
-        loss = self.config.alpha_ce * loss_ce + \
-               self.config.alpha_sim * loss_sim + \
-               self.config.alpha_diff * loss_diff + \
-               self.config.alpha_recon * loss_recon + \
-               self.config.alpha_kd_repr * loss_kd
-
-        return loss, loss_ce, loss_sim, loss_diff_specific, loss_diff_1, loss_diff_2, \
-               loss_recon_1, loss_recon_2, loss_kd, y, logit
-
-    def train_final(self, data_loader, train=True, adjusted=False):
-
-        self._set_learning_phase(train=train, train_mode='final')
-        steps = len(data_loader)
-        metric_names = ['total_loss', 'loss_ce', 'loss_sim',
-                        'loss_diff_specific', 'loss_diff_1', 'loss_diff_2',
-                        'loss_recon_1', 'loss_recon_2', 'loss_kd']
-        result = {k: torch.zeros(steps, device=self.local_rank) for k in metric_names}
-
-        y_true, y_pred = [], []
-        for i, batch in enumerate(data_loader):
-            loss, loss_ce, loss_sim, loss_diff_specific, loss_diff_1, loss_diff_2, \
-            loss_recon_1, loss_recon_2, loss_kd, y, logit = self.train_final_step(batch)
-            if train:
-                self.update(loss)
-
-            # save
-            result['total_loss'][i] = loss.detach()
-            result['loss_ce'][i] = loss_ce.detach()
-            result['loss_sim'][i] = loss_sim.detach()
-            result['loss_diff_specific'][i] = loss_diff_specific.detach()
-            result['loss_diff_1'][i] = loss_diff_1.detach()
-            result['loss_diff_2'][i] = loss_diff_2.detach()
-            result['loss_recon_1'][i] = loss_recon_1.detach()
-            result['loss_recon_2'][i] = loss_recon_2.detach()
-            result['loss_kd'][i] = loss_kd.detach()
-
-            y_true.append(y)
-            y_pred.append(logit)
-
-        result = {k: v.mean().item() for k, v in result.items()}
-
-        # enforce to float32: accuracy and macro f1 score
-        y_true = torch.cat(y_true, dim=0)
-        y_pred = torch.cat(y_pred, dim=0).to(torch.float32)
-
-        clf_result = classification_result(y_true=y_true.cpu().numpy(),
-                                           y_pred=y_pred.softmax(1).detach().cpu().numpy(),
-                                           adjusted=adjusted)
-        for k, v in clf_result.items():
-            result[k] = v
-
-        return result
-
-    def train_final_step(self, batch):
-
-        # input data
-        x1 = batch['x1'].float().to(self.local_rank)
-        x2 = batch['x2'].float().to(self.local_rank)
-        y = batch['y'].long().to(self.local_rank)
-
-        # 1. Student
-        with torch.no_grad():
-            h1_s = self.networks['extractor_1_s'](x1)
-
-        # 2. Final Multi
-        # representation h and z
-        h1 = self.networks['extractor_1'](x1)
-        h2 = self.networks['extractor_2'](x2)
-
-        z1_general = self.networks['encoder_general'](h1)
-        z2_general = self.networks['encoder_general'](h2)
-        z1 = self.networks['encoder_1'](h1)
-        z2 = self.networks['encoder_2'](h2)
-
-        # reconstruction
-        h1_recon = self.networks['decoder_1'](z1_general + z1)
-        h2_recon = self.networks['decoder_2'](z2_general + z2)
-
-        # classification
-        if self.use_specific_final:
-            logit = self.networks['classifier'](z1_general + z2_general + z1 + z2)
-        else:
-            logit = self.networks['classifier'](z1_general + z2_general)
-
-        # Losses
-        # difference
-        loss_diff_specific = self.loss_function_diff(z1, z2)
-        loss_diff_1 = self.loss_function_diff(z1, z1_general)
-        loss_diff_2 = self.loss_function_diff(z2, z2_general)
-        loss_diff = loss_diff_specific + loss_diff_1 + loss_diff_2
-
-        # similarity
-        loss_sim = self.loss_function_sim(z1_general, z2_general)
-
-        # reconstruction
-        loss_recon_1 = self.loss_function_recon(h1_recon, h1)
-        loss_recon_2 = self.loss_function_recon(h2_recon, h2)
-        loss_recon = loss_recon_1 + loss_recon_2
-
-        # cross-entropy
-        loss_ce = self.loss_function_ce(logit, y)
-
-        # knowledge distillation
-        h1_s_norm = F.normalize(h1_s, p=2, dim=1)
-        h1_norm = F.normalize(h1, p=2, dim=1)
-
-        cos = torch.einsum('nc,nc->n', [h1_s_norm, h1_norm])
+        cos = torch.einsum('nc,nc->n', [h1_teacher_norm, h1_student_norm])
         loss_kd = (1 - cos) / (2 * self.config.temperature ** 2)
         loss_kd = loss_kd.mean()
 
@@ -888,9 +718,15 @@ class IMKD:
         self.optimizer.step()
         self.optimizer.zero_grad()
 
+    def update_s(self, loss):
+        # update student in IMKD. t2s step.
+        loss.backward()
+        self.optimizer_s.step()
+        self.optimizer_s.zero_grad()
+
     def create_network_optimizer(self, train_mode, train_params: dict):
 
-        assert train_mode in ['single', 'teacher', 'kd', 'final', 'multi']
+        assert train_mode in ['single', 'teacher', 'imkd', 'multi']
         epochs = train_params['epochs']
         learning_rate = train_params['learning_rate']
         weight_decay = train_params['weight_decay']
@@ -910,6 +746,7 @@ class IMKD:
             }
 
         params = []
+        params_s = []
         if train_mode == 'single':
             if self.short:
                 self.networks = {'extractor_1_s': copy.deepcopy(networks['extractor_1']),
@@ -926,7 +763,7 @@ class IMKD:
             for name in self.networks.keys():
                 params = params + [{'params': self.networks[name].parameters(), 'lr': learning_rate}]
 
-        elif train_mode == 'kd':
+        elif train_mode == 'imkd':
             # bring all pre-trained weights from networks_teacher
             for k in networks.keys():
                 networks[k].load_state_dict(self.networks_teacher[k].state_dict())
@@ -940,20 +777,8 @@ class IMKD:
 
             for name in self.networks.keys():
                 if name.endswith('_s'):
-                    params = params + [{'params': self.networks[name].parameters(), 'lr': learning_rate}]
-
-        elif train_mode == 'final':
-            # bring extractor_1_s weights from networks_kd to both extractor_1 and extractor_1_s
-            networks_student['extractor_1_s'].load_state_dict(self.networks_kd['extractor_1_s'].state_dict())
-            # networks['extractor_1'].load_state_dict(self.networks_kd['extractor_1_s'].state_dict())
-
-            for k, v in networks_student.items():
-                networks[k] = v
-
-            self.networks = copy.deepcopy(networks)
-
-            for name in self.networks.keys():
-                if not name.endswith('_s'):
+                    params_s = params_s + [{'params': self.networks[name].parameters(), 'lr': learning_rate}]
+                else:
                     params = params + [{'params': self.networks[name].parameters(), 'lr': learning_rate}]
 
         elif train_mode == 'multi':
@@ -980,6 +805,19 @@ class IMKD:
                                               cycles=self.config.cosine_cycles,
                                               min_lr=self.config.cosine_min_lr)
 
+        if train_mode == 'imkd':
+            # optimizer for student. update in t2s step
+            self.optimizer_s = get_optimizer(params=params_s,
+                                             name=self.config.optimizer,
+                                             lr=train_params['learning_rate_s'],
+                                             weight_decay=weight_decay)
+
+            self.scheduler_s = get_cosine_scheduler(self.optimizer_s,
+                                                    epochs=epochs,
+                                                    warmup_steps=self.config.cosine_warmup,
+                                                    cycles=self.config.cosine_cycles,
+                                                    min_lr=self.config.cosine_min_lr)
+
         if self.short:
             del networks
         else:
@@ -988,7 +826,7 @@ class IMKD:
     def make_epoch_history(self, train_history: dict = None, test_history: dict = None, adjusted: bool = False):
         epoch_history = collections.defaultdict(dict)
         train_mode = self.train_mode
-        if self.train_mode == 'final':
+        if self.train_mode == 'imkd':
             train_mode = f'{train_mode}-{self.use_specific_final}'
         if not adjusted:
             if train_history is not None:
@@ -1008,7 +846,7 @@ class IMKD:
         for p in net.parameters():
             p.requires_grad = not freeze
 
-    def _set_learning_phase(self, train: bool = True, train_mode: str = 'teacher'):
+    def _set_learning_phase(self, train: bool = True, train_mode: str = 'teacher', imkd_mode: str = None):
         if train_mode == 'single':
             for name, network in self.networks.items():
                 if train:
@@ -1021,24 +859,15 @@ class IMKD:
                     network.train()
                 else:
                     network.eval()
-        elif train_mode == 'kd':
-            for name in self.networks.keys():
-                if name.endswith('_s'):
+        elif train_mode == 'imkd':
+            for name, network in self.networks.items():
+                if (imkd_mode == 't2s' and name.endswith('_s')) or (imkd_mode == 's2t' and not name.endswith('_s')):
                     if train:
-                        self.networks[name].train()
+                        network.train()
                     else:
-                        self.networks[name].eval()
+                        network.eval()
                 else:
-                    self.networks[name].eval()
-        elif train_mode == 'final':
-            for name in self.networks.keys():
-                if not name.endswith('_s'):
-                    if train:
-                        self.networks[name].train()
-                    else:
-                        self.networks[name].eval()
-                else:
-                    self.networks[name].eval()
+                    network.eval()
         elif train_mode == 'multi':
             for name, network in self.networks.items():
                 if train:
