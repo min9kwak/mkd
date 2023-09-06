@@ -3,7 +3,6 @@ import collections
 import copy
 import os
 import pickle
-import tqdm
 import wandb
 
 from itertools import cycle
@@ -192,9 +191,7 @@ class Simulator:
             # train
             with get_rich_pbar(transient=True, auto_refresh=False) as pg:
                 task = pg.add_task(f"[bold red] Training KD...")
-                for epoch in tqdm.tqdm(range(1, self.train_params['epochs'] + 1),
-                                       total=max(len(loaders['train_complete']), len(loaders['train_incomplete'])),
-                                       desc='Training KD'):
+                for epoch in range(1, self.train_params['epochs'] + 1):
                     self.epoch = epoch
                     train_history = self.train_kd(loaders['train_complete'],
                                                   loaders['train_incomplete'],
@@ -251,8 +248,7 @@ class Simulator:
                 # train
                 with get_rich_pbar(transient=True, auto_refresh=False) as pg:
                     task = pg.add_task(f"[bold red] Training Final ({self.use_specific_final})...")
-                    for epoch in tqdm.tqdm(range(1, self.train_params['epochs'] + 1), total=len(loaders['train_complete']),
-                                           desc=f'Training Final ({self.use_specific_final})'):
+                    for epoch in range(1, self.train_params['epochs'] + 1):
                         self.epoch = epoch
                         train_history = self.train_final(loaders['train_complete'], train=True, adjusted=False)
                         with torch.no_grad():
@@ -301,8 +297,7 @@ class Simulator:
             # train
             with get_rich_pbar(transient=True, auto_refresh=False) as pg:
                 task = pg.add_task(f"[bold red] Training Multi...")
-                for epoch in tqdm.tqdm(range(1, self.train_params['epochs'] + 1), total=len(loaders['train_complete']),
-                                       desc='Training Final'):
+                for epoch in range(1, self.train_params['epochs'] + 1):
                     self.epoch = epoch
                     train_history = self.train_multi(loaders['train_complete'], train=True, adjusted=False)
                     with torch.no_grad():
