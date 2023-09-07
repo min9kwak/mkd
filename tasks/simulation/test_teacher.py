@@ -539,17 +539,30 @@ class TestTeacher:
 
         return loss, loss_ce, y, logit
 
-    def train_multi_student(self, data_complete_loader, train=True, adjusted=False):
+    def train_multi_student(self, data_complete_loader, data_incomplete_loader, train=True, adjusted=False):
 
         self._set_learning_phase(train=train, train_mode='multi_student')
-        steps = len(data_complete_loader)
+        steps = max(len(data_complete_loader), len(data_incomplete_loader))
         metric_names = ['total_loss', 'loss_ce', 'loss_kd']
         result = {k: torch.zeros(steps, device=self.local_rank) for k in metric_names}
 
+        # use cycle to extend short loader to be equal to long loader
+        if len(data_complete_loader) >= len(data_incomplete_loader):
+            complete_is_long = True
+            long_loader, short_loader = data_complete_loader, data_incomplete_loader
+        else:
+            complete_is_long = False
+            long_loader, short_loader = data_incomplete_loader, data_complete_loader
+        short_loader_cycle = cycle(short_loader)
+
         y_true, y_pred = [], []
 
-        for i, batch in enumerate(data_complete_loader):
-            loss, loss_ce, loss_kd, y, logit = self.train_multi_student_step(batch)
+        for i, (batch_l, batch_s) in enumerate(zip(long_loader, short_loader_cycle)):
+            if complete_is_long:
+                batch_c, batch_ic = batch_l, batch_s
+            else:
+                batch_c, batch_ic = batch_s, batch_l
+            loss, loss_ce, loss_kd, y, logit = self.train_multi_student_step(batch_c, batch_ic)
             if train:
                 self.update(loss)
 
@@ -574,7 +587,7 @@ class TestTeacher:
 
         return result
 
-    def train_multi_student_step(self, batch):
+    def train_multi_student_step(self, batch, batch_in):
 
         # A. Complete Training
         x1 = batch['x1'].float().to(self.local_rank)
@@ -602,12 +615,28 @@ class TestTeacher:
                                F.softmax(logit / self.config.temperature, dim=1),
                                reduction='batchmean')
 
-        # C. Loss
-        loss_ce = self.loss_function_ce(logit_s, y)
+        # B. Incomplete Training
+        if self.config.use_incomplete:
+            x1_in = batch_in['x1'].float().to(self.local_rank)
+            y_in = batch_in['y'].long().to(self.local_rank)
 
+            h1_s_in = self.networks['extractor_1_s'](x1_in)
+            z1_general_s_in = self.networks['encoder_general_s'](h1_s_in)
+            logit_s_in = self.networks['classifier_s'](z1_general_s_in * 2)
+
+            # C. Loss
+            logit_total = torch.concat([logit_s, logit_s_in])
+            y_total = torch.concat([y, y_in])
+
+        else:
+            logit_total = logit_s
+            y_total = y
+
+        # C. Loss
+        loss_ce = self.loss_function_ce(logit_total, y_total)
         loss = self.config.alpha_ce * loss_ce + self.config.alpha_kd_clf * loss_kd_clf
 
-        return loss, loss_ce, loss_kd_clf, y, logit_s
+        return loss, loss_ce, loss_kd_clf, y_total, logit_total
 
     def update(self, loss):
         loss.backward()
