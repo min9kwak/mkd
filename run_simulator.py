@@ -28,7 +28,14 @@ def main():
 
     config = ConfigSimulation.parse_arguments()
 
-    gamma = config.overlap_dim / (config.xs_dim * 2 - config.overlap_dim)
+    if config.mm_mode == 'increase_gamma':
+        gamma = config.overlap_dim / (config.xs1_dim + config.xs2_dim - config.overlap_dim)
+    elif config.mm_mode == 'increase_alpha':
+        alpha = config.xs1_dim / (config.xs1_dim + config.xs2_dim)
+        gamma = 1 - alpha
+        setattr(config, 'alpha', alpha)
+    else:
+        raise NotImplementedError
     setattr(config, 'gamma', gamma)
 
     if config.missing_rate == -1.0:
@@ -69,8 +76,8 @@ def main_worker(local_rank: int, config: argparse.Namespace):
 
     # Dataset
     dataset = create_dataset(n_train=config.n_train, n_test=config.n_test,
-                             x1_dim=config.x_dim, x2_dim=config.x_dim,
-                             xs1_dim=config.xs_dim, xs2_dim=config.xs_dim,
+                             x1_dim=config.x1_dim, x2_dim=config.x2_dim,
+                             xs1_dim=config.xs1_dim, xs2_dim=config.xs2_dim,
                              overlap_dim=config.overlap_dim, hyperplane_dim=config.hyperplane_dim,
                              missing_rate=config.missing_rate, random_state=config.random_state)
 

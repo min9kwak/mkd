@@ -29,6 +29,8 @@ def create_dataset(n_train=200, n_test=1000,
                    xs1_dim=10, xs2_dim=10, overlap_dim=10,
                    hyperplane_dim=500,
                    missing_rate=0.5,
+                   mm_mode='increase_gamma',
+                   missing_mode='add',
                    random_state=2021):
 
     # https://github.com/zihuixue/MFH/blob/main/gauss/main.py - exp1
@@ -41,7 +43,7 @@ def create_dataset(n_train=200, n_test=1000,
         generate_mm_data(n_samples=n_train,
                          x1_dim=x1_dim, x2_dim=x2_dim,
                          xs1_dim=xs1_dim, xs2_dim=xs2_dim, overlap_dim=overlap_dim, hyperplane=hyperplane,
-                         missing_rate=missing_rate)
+                         missing_rate=missing_rate, mm_mode=mm_mode, missing_mode=missing_mode)
 
     # generate data - test
     set_random_state(random_state=random_state + 365)
@@ -49,7 +51,7 @@ def create_dataset(n_train=200, n_test=1000,
         generate_mm_data(n_samples=n_test,
                          x1_dim=x1_dim, x2_dim=x2_dim,
                          xs1_dim=xs1_dim, xs2_dim=xs2_dim, overlap_dim=overlap_dim, hyperplane=hyperplane,
-                         missing_rate=None)
+                         missing_rate=None, mm_mode=mm_mode, missing_mode=missing_mode)
 
     data = dict(
         x1_train_complete=x1_train_complete, x2_train_complete=x2_train_complete, y_train_complete=y_train_complete,
@@ -60,40 +62,77 @@ def create_dataset(n_train=200, n_test=1000,
     return data
 
 
-def generate_mm_data(n_samples, x1_dim, x2_dim, xs1_dim, xs2_dim, overlap_dim, hyperplane, missing_rate):
+def generate_mm_data(n_samples, x1_dim, x2_dim, xs1_dim, xs2_dim, overlap_dim, hyperplane, missing_rate,
+                     mm_mode, missing_mode):
 
-    # decisive features
-    xs = np.random.randn(n_samples, xs1_dim + xs2_dim)
+    def generate_mm_data_(n_samples, x1_dim, x2_dim, xs1_dim, xs2_dim, overlap_dim, hyperplane, mm_mode):
 
-    # separating hyperplane
-    hyperplane = hyperplane[0:xs1_dim + xs2_dim]
+        if mm_mode == 'increase_gamma':
+            # decisive features
+            xs = np.random.randn(n_samples, xs1_dim + xs2_dim)
 
-    # decisive featuers xs -> label y
-    y = (np.dot(xs, hyperplane) > 0).ravel()
+            # separating hyperplane
+            hyperplane = hyperplane[0:xs1_dim + xs2_dim]
 
-    # x2, 0:xs2_dim are decisive features, others gaussian noise
-    x2 = np.random.randn(n_samples, x2_dim)
-    x2[:, 0:xs2_dim] = xs[:, 0:xs2_dim]
+            # decisive featuers xs -> label y
+            y = (np.dot(xs, hyperplane) > 0).ravel()
 
-    # x1, among all x1_dim channels, xs1_dim channels are decisive, others gaussian noise
-    # among all xs1_dim decisive channels, overlap_dim are shared between x1 and x2
-    x1 = np.random.randn(n_samples, x1_dim)
-    x1[:, xs2_dim - overlap_dim:xs2_dim - overlap_dim + xs1_dim] = \
-        xs[:, xs2_dim - overlap_dim:xs2_dim - overlap_dim + xs1_dim]
+            # x2, 0:xs2_dim are decisive features, others gaussian noise
+            x2 = np.random.randn(n_samples, x2_dim)
+            x2[:, 0:xs2_dim] = xs[:, 0:xs2_dim]
+
+            # x1, among all x1_dim channels, xs1_dim channels are decisive, others gaussian noise
+            # among all xs1_dim decisive channels, overlap_dim are shared between x1 and x2
+            x1 = np.random.randn(n_samples, x1_dim)
+            x1[:, xs2_dim - overlap_dim:xs2_dim - overlap_dim + xs1_dim] = \
+                xs[:, xs2_dim - overlap_dim:xs2_dim - overlap_dim + xs1_dim]
+
+        elif mm_mode == 'increase_alpha':
+            xs = np.random.randn(n_samples, x1_dim)
+            hyperplane = hyperplane[0:x1_dim]
+            y = (np.dot(xs, hyperplane) > 0).ravel()
+
+            x2 = np.random.randn(n_samples, x2_dim)
+            x2[:, 0:xs2_dim] = xs[:, 0:xs2_dim]
+
+            # x1: 0:xs1_dim+xs_2dim-decisive features, other dim-gaussian noise
+            x1 = np.random.randn(n_samples, x1_dim)
+            x1[:, 0:xs1_dim + xs2_dim] = xs[:, 0:xs1_dim + xs2_dim]
+
+        else:
+            raise NotImplementedError
+
+        return x1, x2, y
 
     # create incomplete dataset. x1 is large dataset
+    x1, x2, y = generate_mm_data_(n_samples, x1_dim, x2_dim, xs1_dim, xs2_dim, overlap_dim, hyperplane, mm_mode)
+
     if missing_rate is not None:
         assert 0 < missing_rate < 1
-        n_missing = int(n_samples * missing_rate)
-        missing_index = np.random.choice(np.arange(n_samples), n_missing, replace=False)
+        if missing_mode == 'remove':
 
-        # x1 is a large dataset
-        x2_complete = np.delete(x2, missing_index, axis=0)
-        x1_complete = np.delete(x1, missing_index, axis=0)
-        x1_incomplete = x1[missing_index, :]
+            n_missing = int(n_samples * missing_rate)
+            missing_index = np.random.choice(np.arange(n_samples), n_missing, replace=False)
 
-        y_complete = np.delete(y, missing_index)
-        y_incomplete = y[missing_index]
+            # x1 is a large dataset
+            x2_complete = np.delete(x2, missing_index, axis=0)
+            x1_complete = np.delete(x1, missing_index, axis=0)
+            x1_incomplete = x1[missing_index, :]
+
+            y_complete = np.delete(y, missing_index)
+            y_incomplete = y[missing_index]
+
+        elif missing_mode == 'add':
+            n_add = int(n_samples * (1 - missing_rate) / missing_rate)
+            x1_incomplete, _, y_incomplete = generate_mm_data_(n_add, x1_dim, x2_dim, xs1_dim, xs2_dim,
+                                                               overlap_dim, hyperplane, mm_mode)
+
+            x1_complete = x1
+            x2_complete = x2
+            y_complete = y
+
+        else:
+            raise NotImplementedError
 
     else:
         x1_complete = x1
@@ -285,8 +324,8 @@ class Classifier(nn.Module):
 
 def build_simple_networks(config: argparse.Namespace or edict, **kwargs):
 
-    extractor_1 = Extractor(in_channels=config.x_dim, out_channels=config.hidden)
-    extractor_2 = Extractor(in_channels=config.x_dim, out_channels=config.hidden)
+    extractor_1 = Extractor(in_channels=config.x1_dim, out_channels=config.hidden)
+    extractor_2 = Extractor(in_channels=config.x2_dim, out_channels=config.hidden)
 
     encoder_1 = SimpleEncoder(in_channels=config.hidden, out_channels=config.hidden // 2, act=config.encoder_act)
     encoder_2 = SimpleEncoder(in_channels=config.hidden, out_channels=config.hidden // 2, act=config.encoder_act)
@@ -307,8 +346,8 @@ def build_simple_networks(config: argparse.Namespace or edict, **kwargs):
 
 def build_networks(config: argparse.Namespace or edict, **kwargs):
     # TODO: change x_dim to x1_dim and x2_dim
-    extractor_1 = Extractor(in_channels=config.x_dim, out_channels=config.hidden)
-    extractor_2 = Extractor(in_channels=config.x_dim, out_channels=config.hidden)
+    extractor_1 = Extractor(in_channels=config.x1_dim, out_channels=config.hidden)
+    extractor_2 = Extractor(in_channels=config.x2_dim, out_channels=config.hidden)
 
     encoder_1 = Encoder(in_channels=config.hidden, out_channels=config.hidden // 2, act=config.encoder_act)
     encoder_2 = Encoder(in_channels=config.hidden, out_channels=config.hidden // 2, act=config.encoder_act)
@@ -329,8 +368,8 @@ def build_networks(config: argparse.Namespace or edict, **kwargs):
 
 def build_short_networks(config: argparse.Namespace or edict, **kwargs):
 
-    extractor_1 = Extractor(in_channels=config.x_dim, out_channels=config.hidden)
-    extractor_2 = Extractor(in_channels=config.x_dim, out_channels=config.hidden)
+    extractor_1 = Extractor(in_channels=config.x1_dim, out_channels=config.hidden)
+    extractor_2 = Extractor(in_channels=config.x2_dim, out_channels=config.hidden)
     classifier = Classifier(in_channels=config.hidden, n_classes=2)
 
     networks = dict(extractor_1=extractor_1, extractor_2=extractor_2, classifier=classifier)

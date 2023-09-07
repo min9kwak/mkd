@@ -116,15 +116,15 @@ class Simulator:
             del pg
 
             # last & adjusted
-            with torch.no_grad():
-                adjusted_history = self.train_single(loaders['test'], train=False, adjusted=True)
-            adjusted_history = self.make_epoch_history(train_history=None,
-                                                       test_history=adjusted_history,
-                                                       adjusted=True)
-            if self.config.enable_wandb:
-                wandb.log(adjusted_history)
-            if self.save_log:
-                self.logs[self.train_mode]['adjusted'] = adjusted_history
+            # with torch.no_grad():
+            #     adjusted_history = self.train_single(loaders['test'], train=False, adjusted=True)
+            # adjusted_history = self.make_epoch_history(train_history=None,
+            #                                            test_history=adjusted_history,
+            #                                            adjusted=True)
+            # if self.config.enable_wandb:
+            #     wandb.log(adjusted_history)
+            # if self.save_log:
+            #     self.logs[self.train_mode]['adjusted'] = adjusted_history
 
             # save network
             self.networks_single = self.networks
@@ -169,15 +169,15 @@ class Simulator:
             del pg
 
             # last & adjusted
-            with torch.no_grad():
-                adjusted_history = self.train_teacher(loaders['test'], train=False, adjusted=True)
-            adjusted_history = self.make_epoch_history(train_history=None,
-                                                       test_history=adjusted_history,
-                                                       adjusted=True)
-            if self.config.enable_wandb:
-                wandb.log(adjusted_history)
-            if self.save_log:
-                self.logs[self.train_mode]['adjusted'] = adjusted_history
+            # with torch.no_grad():
+            #     adjusted_history = self.train_teacher(loaders['test'], train=False, adjusted=True)
+            # adjusted_history = self.make_epoch_history(train_history=None,
+            #                                            test_history=adjusted_history,
+            #                                            adjusted=True)
+            # if self.config.enable_wandb:
+            #     wandb.log(adjusted_history)
+            # if self.save_log:
+            #     self.logs[self.train_mode]['adjusted'] = adjusted_history
 
             # save network
             self.networks_teacher = copy.deepcopy(self.networks)
@@ -223,15 +223,15 @@ class Simulator:
             del pg
 
             # last & adjusted
-            with torch.no_grad():
-                adjusted_history = self.train_kd(loaders['test'], loaders['test'], train=False, adjusted=True)
-            adjusted_history = self.make_epoch_history(train_history=None,
-                                                       test_history=adjusted_history,
-                                                       adjusted=True)
-            if self.config.enable_wandb:
-                wandb.log(adjusted_history)
-            if self.save_log:
-                self.logs[self.train_mode]['adjusted'] = adjusted_history
+            # with torch.no_grad():
+            #     adjusted_history = self.train_kd(loaders['test'], loaders['test'], train=False, adjusted=True)
+            # adjusted_history = self.make_epoch_history(train_history=None,
+            #                                            test_history=adjusted_history,
+            #                                            adjusted=True)
+            # if self.config.enable_wandb:
+            #     wandb.log(adjusted_history)
+            # if self.save_log:
+            #     self.logs[self.train_mode]['adjusted'] = adjusted_history
 
             # save network
             self.networks_kd = self.networks
@@ -239,7 +239,8 @@ class Simulator:
         # 4. Final Multi-Modal
         if 4 in self.config.train_level:
 
-            for use_specific_final in [True, False]:
+            # for use_specific_final in [True, False]:
+            for use_specific_final in [True]:
                 self.use_specific_final = use_specific_final
                 self.train_mode = 'final'
                 self.train_params = copy.deepcopy(self.config.train_params[self.train_mode])
@@ -278,15 +279,15 @@ class Simulator:
                 del pg
 
                 # last & adjusted
-                with torch.no_grad():
-                    adjusted_history = self.train_final(loaders['test'], train=False, adjusted=True)
-                adjusted_history = self.make_epoch_history(train_history=None,
-                                                           test_history=adjusted_history,
-                                                           adjusted=True)
-                if self.config.enable_wandb:
-                    wandb.log(adjusted_history)
-                if self.save_log:
-                    self.logs[f'{self.train_mode}-{use_specific_final}']['adjusted'] = adjusted_history
+                # with torch.no_grad():
+                #     adjusted_history = self.train_final(loaders['test'], train=False, adjusted=True)
+                # adjusted_history = self.make_epoch_history(train_history=None,
+                #                                            test_history=adjusted_history,
+                #                                            adjusted=True)
+                # if self.config.enable_wandb:
+                #     wandb.log(adjusted_history)
+                # if self.save_log:
+                #     self.logs[f'{self.train_mode}-{use_specific_final}']['adjusted'] = adjusted_history
 
         # 5. Multi-Modal
         if 5 in self.config.train_level:
@@ -326,15 +327,15 @@ class Simulator:
             del pg
 
             # last & adjusted
-            with torch.no_grad():
-                adjusted_history = self.train_multi(loaders['test'], train=False, adjusted=True)
-            adjusted_history = self.make_epoch_history(train_history=None,
-                                                       test_history=adjusted_history,
-                                                       adjusted=True)
-            if self.config.enable_wandb:
-                wandb.log(adjusted_history)
-            if self.save_log:
-                self.logs[self.train_mode]['adjusted'] = adjusted_history
+            # with torch.no_grad():
+            #     adjusted_history = self.train_multi(loaders['test'], train=False, adjusted=True)
+            # adjusted_history = self.make_epoch_history(train_history=None,
+            #                                            test_history=adjusted_history,
+            #                                            adjusted=True)
+            # if self.config.enable_wandb:
+            #     wandb.log(adjusted_history)
+            # if self.save_log:
+            #     self.logs[self.train_mode]['adjusted'] = adjusted_history
 
         # save results
         if self.save_log:
