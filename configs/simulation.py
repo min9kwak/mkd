@@ -611,6 +611,9 @@ class ConfigTestTeacher(object):
         # short
         parser.add_argument('--short', type=str2bool, default=False)
 
+        # use_incomplete
+        parser.add_argument('--use_incomplete', type=str2bool, default=True)
+
         return parser
 
     @staticmethod

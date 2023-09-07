@@ -460,18 +460,23 @@ class TestTeacher:
                                reduction='batchmean')
 
         # B. Incomplete Training
-        x1_in = batch_in['x1'].float().to(self.local_rank)
-        y_in = batch_in['y'].long().to(self.local_rank)
+        if self.config.use_incomplete:
+            x1_in = batch_in['x1'].float().to(self.local_rank)
+            y_in = batch_in['y'].long().to(self.local_rank)
 
-        h1_s_in = self.networks['extractor_1_s'](x1_in)
-        z1_general_s_in = self.networks['encoder_general_s'](h1_s_in)
-        logit_s_in = self.networks['classifier_s'](z1_general_s_in * 2)
+            h1_s_in = self.networks['extractor_1_s'](x1_in)
+            z1_general_s_in = self.networks['encoder_general_s'](h1_s_in)
+            logit_s_in = self.networks['classifier_s'](z1_general_s_in * 2)
 
-        # C. Loss
-        logit_total = torch.concat([logit_s, logit_s_in])
-        y_total = torch.concat([y, y_in])
+            # C. Loss
+            logit_total = torch.concat([logit_s, logit_s_in])
+            y_total = torch.concat([y, y_in])
+
+        else:
+            logit_total = logit_s
+            y_total = y
+
         loss_ce = self.loss_function_ce(logit_total, y_total)
-
         loss = self.config.alpha_ce * loss_ce + self.config.alpha_kd_clf * loss_kd_clf
 
         return loss, loss_ce, loss_kd_clf, y_total, logit_total
