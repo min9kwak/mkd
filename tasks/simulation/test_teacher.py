@@ -246,10 +246,11 @@ class TestTeacher:
             for epoch in range(1, self.train_params['epochs'] + 1):
                 self.epoch = epoch
                 train_history = self.train_multi_student(loaders['train_complete'],
+                                                         loaders['train_incomplete'],
                                                          train=True,
                                                          adjusted=False)
                 with torch.no_grad():
-                    test_history = self.train_multi_student(loaders['test'], train=False, adjusted=False)
+                    test_history = self.train_multi_student(loaders['test'], loaders['test'], train=False, adjusted=False)
 
                 epoch_history = self.make_epoch_history(train_history=train_history,
                                                         test_history=test_history,
@@ -275,7 +276,7 @@ class TestTeacher:
 
         # last & adjusted
         with torch.no_grad():
-            adjusted_history = self.train_multi_student(loaders['test'], train=False, adjusted=True)
+            adjusted_history = self.train_multi_student(loaders['test'], loaders['test'], train=False, adjusted=True)
         adjusted_history = self.make_epoch_history(train_history=None,
                                                    test_history=adjusted_history,
                                                    adjusted=True)
