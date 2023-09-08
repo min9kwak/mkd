@@ -377,9 +377,36 @@ def build_short_networks(config: argparse.Namespace or edict, **kwargs):
     return networks
 
 
+def is_activation_layer(layer):
+    activation_layers = (nn.ReLU, nn.Sigmoid, nn.Tanh, nn.LeakyReLU, nn.PReLU)
+    return isinstance(layer, activation_layers)
+
+
+def remove_activation_from_layers(network):
+    new_layers_dict = collections.OrderedDict()
+    for name, layer in network.layers.named_children():
+        if not isinstance(layer, (nn.ReLU, nn.LeakyReLU, nn.Sigmoid)):
+            new_layers_dict[name] = layer
+    network.layers = nn.Sequential(new_layers_dict)
+
+
 if __name__ == 'main':
     dataset = create_dataset(n_train=1000, n_test=1000, x1_dim=50, x2_dim=50, xs1_dim=20, xs2_dim=20,
                              overlap_dim=15, hyperplane_dim=500, missing_rate=0.3, random_state=2021)
 
+    from easydict import EasyDict as edict
+    config = edict
+    config.x1_dim = 50
+    config.x2_dim = 50
+    config.hidden = 25
+    config.encoder_act = 'relu'
+    networks = build_networks(config=config)
 
+    for name, network in networks.items():
+        print(network)
 
+    for network in networks.values():
+        remove_activation_from_layers(network)
+
+    for name, network in networks.items():
+        print(network)

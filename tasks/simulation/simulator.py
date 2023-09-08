@@ -13,7 +13,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
 from utils.metrics import classification_result
-from utils.simulation import build_networks, build_short_networks, build_simple_networks
+from utils.simulation import build_networks, build_short_networks, build_simple_networks, remove_activation_from_layers
 from utils.logging import get_rich_pbar
 from utils.optimization import get_optimizer, get_cosine_scheduler
 
@@ -975,6 +975,10 @@ class Simulator:
                                               warmup_steps=self.config.cosine_warmup,
                                               cycles=self.config.cosine_cycles,
                                               min_lr=self.config.cosine_min_lr)
+
+        if self.config.linear_network:
+            for network in self.networks.values():
+                remove_activation_from_layers(network)                
 
         if self.short:
             del networks

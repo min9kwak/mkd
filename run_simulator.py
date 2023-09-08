@@ -28,14 +28,13 @@ def main():
 
     config = ConfigSimulation.parse_arguments()
 
-    if config.mm_mode == 'increase_gamma':
-        gamma = config.overlap_dim / (config.xs1_dim + config.xs2_dim - config.overlap_dim)
-    elif config.mm_mode == 'increase_alpha':
-        alpha = config.xs1_dim / (config.xs1_dim + config.xs2_dim)
-        gamma = 1 - alpha
-        setattr(config, 'alpha', alpha)
-    else:
-        raise NotImplementedError
+    denom = config.xs1_sim + config.xs2_sim - config.overlap_dim
+    alpha = (config.xs1_sim - config.overlap_dim) / denom
+    beta = (config.xs2_sim - config.overlap_dim) / denom
+    gamma = 1 - (alpha + beta)
+
+    setattr(config, 'alpha', alpha)
+    setattr(config, 'beta', beta)
     setattr(config, 'gamma', gamma)
 
     if config.missing_rate == -1.0:

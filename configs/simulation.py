@@ -229,6 +229,7 @@ class ConfigSimulation(object):
         parser.add_argument('--hidden', type=int, default=25)
         parser.add_argument('--simple', type=str2bool, default=False)
         parser.add_argument('--encoder_act', type=handle_none, default='relu')
+        parser.add_argument('--linear_network', type=handle_none, default=False)
 
         return parser
 
