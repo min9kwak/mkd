@@ -146,21 +146,26 @@ class ConfigSimulation(object):
     @staticmethod
     def data_parser() -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser("Simulation Data", add_help=False)
-        parser.add_argument('--n_train', type=int, default=1000)
+
+        # representation
+        parser.add_argument('--zs_dim', type=int, default=10)
+        parser.add_argument('--z1_dim', type=int, default=10)
+        parser.add_argument('--z2_dim', type=int, default=10)
+        parser.add_argument('--rho', type=float, default=0.5)
+        parser.add_argument('--sigma', type=float, default=1.0)
+
+        # input
+        parser.add_argument('--mu_0', type=float, default=0.0)
+        parser.add_argument('--mu_1', type=float, default=1.0)
+        parser.add_argument('--xs_dim', type=int, default=20)
+        parser.add_argument('--x1_dim', type=int, default=20)
+        parser.add_argument('--x2_dim', type=int, default=20)
+        parser.add_argument('--slope', type=float, default=0.5)
+
+        # samples
+        parser.add_argument('--n_complete', type=int, default=1000)
+        parser.add_argument('--n_incomplete', type=int, default=0)
         parser.add_argument('--n_test', type=int, default=1000)
-
-        parser.add_argument('--x1_dim', type=int, default=50)
-        parser.add_argument('--x2_dim', type=int, default=50)
-        parser.add_argument('--xs1_dim', type=int, default=10)
-        parser.add_argument('--xs2_dim', type=int, default=10)
-        parser.add_argument('--overlap_dim', type=int, default=10)
-
-        parser.add_argument('--hyperplane_dim', type=int, default=500)
-        parser.add_argument('--missing_rate', type=float, default=0.2, help='-1 means None')
-
-        parser.add_argument('--mm_mode', type=str, default='increase_gamma',
-                            choices=('increase_gamma', 'increase_alpha'))
-        parser.add_argument('--missing_mode', type=str, default='remove', choices=('remove', 'add'))
 
         parser.add_argument('--random_state', type=int, default=2021)
 
@@ -185,30 +190,28 @@ class ConfigSimulation(object):
         parser.add_argument('--mixed_precision', type=str2bool, default=False, help='Use float16 precision.')
 
         # train level
-        parser.add_argument('--train_level', type=parse_numbers, default="1,2,3,4,5",
-                            help='1: single-modal from scratch,'
-                                 '2: teacher,'
-                                 '3: teacher+kd,'
-                                 '4: teacher+kd+final (use_specific True and False),'
-                                 '5: multi-modal from scratch')
+        parser.add_argument('--train_level', type=parse_numbers, default="1,2,3,4",
+                            help='1: Single from scratch,'
+                                 '2: SMT & SMT-Student & Final'
+                                 '3: Multi & Multi-Student')
 
-        # scratch: use default
+        # single from scratch
         parser.add_argument('--epochs_single', type=int, default=30, help='Number of training epochs.')
         parser.add_argument('--learning_rate_single', type=float, default=0.0001,
                             help='Base learning rate to start from.')
         parser.add_argument('--weight_decay_single', type=float, default=0.0001, help='Weight decay factor.')
 
-        # teacher
-        parser.add_argument('--epochs_teacher', type=int, default=100, help='Number of training epochs.')
-        parser.add_argument('--learning_rate_teacher', type=float, default=0.001, help='Base learning rate to start from.')
-        parser.add_argument('--weight_decay_teacher', type=float, default=0.0001, help='Weight decay factor.')
+        # smt
+        parser.add_argument('--epochs_smt', type=int, default=100, help='Number of training epochs.')
+        parser.add_argument('--learning_rate_smt', type=float, default=0.001, help='Base learning rate to start from.')
+        parser.add_argument('--weight_decay_smt', type=float, default=0.0001, help='Weight decay factor.')
 
-        # teacher
-        parser.add_argument('--epochs_kd', type=int, default=30, help='Number of training epochs.') # TODO: check 10
-        parser.add_argument('--learning_rate_kd', type=float, default=0.0001, help='Base learning rate to start from.')
-        parser.add_argument('--weight_decay_kd', type=float, default=0.0001, help='Weight decay factor.')
+        # smt-student
+        parser.add_argument('--epochs_smt_student', type=int, default=30, help='Number of training epochs.')
+        parser.add_argument('--learning_rate_smt_student', type=float, default=0.0001, help='Base learning rate to start from.')
+        parser.add_argument('--weight_decay_smt_student', type=float, default=0.0001, help='Weight decay factor.')
 
-        # teacher
+        # final
         parser.add_argument('--epochs_final', type=int, default=100, help='Number of training epochs.')
         parser.add_argument('--learning_rate_final', type=float, default=0.001, help='Base learning rate to start from.')
         parser.add_argument('--weight_decay_final', type=float, default=0.0001, help='Weight decay factor.')
@@ -218,8 +221,10 @@ class ConfigSimulation(object):
         parser.add_argument('--learning_rate_multi', type=float, default=0.0001, help='Base learning rate to start from.')
         parser.add_argument('--weight_decay_multi', type=float, default=0.0001, help='Weight decay factor.')
 
-        # short
-        parser.add_argument('--short', type=str2bool, default=False)
+        # multi-student
+        parser.add_argument('--epochs_multi_student', type=int, default=30, help='Number of training epochs.')
+        parser.add_argument('--learning_rate_multi_student', type=float, default=0.0001, help='Base learning rate to start from.')
+        parser.add_argument('--weight_decay_multi_student', type=float, default=0.0001, help='Weight decay factor.')
 
         return parser
 
@@ -227,9 +232,7 @@ class ConfigSimulation(object):
     def model_parser() -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser("Simulation Data", add_help=False)
         parser.add_argument('--hidden', type=int, default=25)
-        parser.add_argument('--simple', type=str2bool, default=False)
         parser.add_argument('--encoder_act', type=handle_none, default='relu')
-        parser.add_argument('--linear_network', type=handle_none, default=False)
 
         return parser
 

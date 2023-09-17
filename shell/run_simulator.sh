@@ -22,8 +22,8 @@ LINEAR_NETWORK=False
 
 for RANDOM_STATE in {2021..2050}; do
   for MISSING_RATE in 0.1 0.2 0.3 0.4 0.5 0.6; do
-    for XS1_DIM in 0 5 10 15 20; do
-      for XS2_DIM in 0 5 10 15 20; do
+    for XS1_DIM in 10 15 20 25 30; do
+      for XS2_DIM in 10 15 20 25 30; do
         python ./run_simulator.py \
         --server $SERVER \
         --gpus $GPUS \

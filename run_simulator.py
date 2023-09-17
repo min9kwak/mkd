@@ -28,9 +28,9 @@ def main():
 
     config = ConfigSimulation.parse_arguments()
 
-    denom = config.xs1_sim + config.xs2_sim - config.overlap_dim
-    alpha = (config.xs1_sim - config.overlap_dim) / denom
-    beta = (config.xs2_sim - config.overlap_dim) / denom
+    denom = config.xs1_dim + config.xs2_dim - config.overlap_dim
+    alpha = (config.xs1_dim - config.overlap_dim) / denom
+    beta = (config.xs2_dim - config.overlap_dim) / denom
     gamma = 1 - (alpha + beta)
 
     setattr(config, 'alpha', alpha)
