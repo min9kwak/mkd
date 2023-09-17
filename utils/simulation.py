@@ -11,6 +11,7 @@ from torch.utils.data import Dataset
 from easydict import EasyDict as edict
 
 from utils.initialization import initialize_weights
+from sklearn.model_selection import train_test_split
 
 
 # Data Generation
@@ -22,125 +23,6 @@ def set_random_state(random_state=2021):
     torch.cuda.manual_seed_all(random_state)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
-
-
-def create_dataset(n_train=200, n_test=1000,
-                   x1_dim=25, x2_dim=50,
-                   xs1_dim=10, xs2_dim=10, overlap_dim=10,
-                   hyperplane_dim=500,
-                   missing_rate=0.5,
-                   mm_mode='increase_gamma',
-                   missing_mode='add',
-                   random_state=2021):
-
-    # https://github.com/zihuixue/MFH/blob/main/gauss/main.py - exp1
-    # when gamma is large, multimodal data share many label-relevant information
-    set_random_state(random_state=random_state)
-    hyperplane = np.random.randn(hyperplane_dim)
-
-    # generate data - train
-    x1_train_complete, x2_train_complete, y_train_complete, x1_train_incomplete, y_train_incomplete = \
-        generate_mm_data(n_samples=n_train,
-                         x1_dim=x1_dim, x2_dim=x2_dim,
-                         xs1_dim=xs1_dim, xs2_dim=xs2_dim, overlap_dim=overlap_dim, hyperplane=hyperplane,
-                         missing_rate=missing_rate, mm_mode=mm_mode, missing_mode=missing_mode)
-
-    # generate data - test
-    set_random_state(random_state=random_state + 365)
-    x1_test, x2_test, y_test, _, _ = \
-        generate_mm_data(n_samples=n_test,
-                         x1_dim=x1_dim, x2_dim=x2_dim,
-                         xs1_dim=xs1_dim, xs2_dim=xs2_dim, overlap_dim=overlap_dim, hyperplane=hyperplane,
-                         missing_rate=None, mm_mode=mm_mode, missing_mode=missing_mode)
-
-    data = dict(
-        x1_train_complete=x1_train_complete, x2_train_complete=x2_train_complete, y_train_complete=y_train_complete,
-        x1_train_incomplete=x1_train_incomplete, y_train_incomplete=y_train_incomplete,
-        x1_test=x1_test, x2_test=x2_test, y_test=y_test
-    )
-
-    return data
-
-
-def generate_mm_data(n_samples, x1_dim, x2_dim, xs1_dim, xs2_dim, overlap_dim, hyperplane, missing_rate,
-                     mm_mode, missing_mode):
-
-    def generate_mm_data_(n_samples, x1_dim, x2_dim, xs1_dim, xs2_dim, overlap_dim, hyperplane, mm_mode):
-
-        if mm_mode == 'increase_gamma':
-            # decisive features
-            xs = np.random.randn(n_samples, xs1_dim + xs2_dim)
-
-            # separating hyperplane
-            hyperplane = hyperplane[0:xs1_dim + xs2_dim]
-
-            # decisive featuers xs -> label y
-            y = (np.dot(xs, hyperplane) > 0).ravel()
-
-            # x2, 0:xs2_dim are decisive features, others gaussian noise
-            x2 = np.random.randn(n_samples, x2_dim)
-            x2[:, 0:xs2_dim] = xs[:, 0:xs2_dim]
-
-            # x1, among all x1_dim channels, xs1_dim channels are decisive, others gaussian noise
-            # among all xs1_dim decisive channels, overlap_dim are shared between x1 and x2
-            x1 = np.random.randn(n_samples, x1_dim)
-            x1[:, xs2_dim - overlap_dim:xs2_dim - overlap_dim + xs1_dim] = \
-                xs[:, xs2_dim - overlap_dim:xs2_dim - overlap_dim + xs1_dim]
-
-        elif mm_mode == 'increase_alpha':
-            xs = np.random.randn(n_samples, x1_dim)
-            hyperplane = hyperplane[0:x1_dim]
-            y = (np.dot(xs, hyperplane) > 0).ravel()
-
-            x2 = np.random.randn(n_samples, x2_dim)
-            x2[:, 0:xs2_dim] = xs[:, 0:xs2_dim]
-
-            # x1: 0:xs1_dim+xs_2dim-decisive features, other dim-gaussian noise
-            x1 = np.random.randn(n_samples, x1_dim)
-            x1[:, 0:xs1_dim + xs2_dim] = xs[:, 0:xs1_dim + xs2_dim]
-
-        else:
-            raise NotImplementedError
-
-        return x1, x2, y
-
-    # create incomplete dataset. x1 is large dataset
-    x1, x2, y = generate_mm_data_(n_samples, x1_dim, x2_dim, xs1_dim, xs2_dim, overlap_dim, hyperplane, mm_mode)
-
-    if missing_rate is not None:
-        assert 0 < missing_rate < 1
-        if missing_mode == 'remove':
-
-            n_missing = int(n_samples * missing_rate)
-            missing_index = np.random.choice(np.arange(n_samples), n_missing, replace=False)
-
-            # x1 is a large dataset
-            x2_complete = np.delete(x2, missing_index, axis=0)
-            x1_complete = np.delete(x1, missing_index, axis=0)
-            x1_incomplete = x1[missing_index, :]
-
-            y_complete = np.delete(y, missing_index)
-            y_incomplete = y[missing_index]
-
-        elif missing_mode == 'add':
-            n_add = int(n_samples * (1 - missing_rate) / missing_rate)
-            x1_incomplete, _, y_incomplete = generate_mm_data_(n_add, x1_dim, x2_dim, xs1_dim, xs2_dim,
-                                                               overlap_dim, hyperplane, mm_mode)
-
-            x1_complete = x1
-            x2_complete = x2
-            y_complete = y
-
-        else:
-            raise NotImplementedError
-
-    else:
-        x1_complete = x1
-        x2_complete = x2
-        y_complete = y
-        x1_incomplete, y_incomplete = None, None
-
-    return x1_complete, x2_complete, y_complete, x1_incomplete, y_incomplete
 
 
 # Dataset
@@ -322,28 +204,6 @@ class Classifier(nn.Module):
         return out
 
 
-def build_simple_networks(config: argparse.Namespace or edict, **kwargs):
-
-    extractor_1 = Extractor(in_channels=config.x1_dim, out_channels=config.hidden)
-    extractor_2 = Extractor(in_channels=config.x2_dim, out_channels=config.hidden)
-
-    encoder_1 = SimpleEncoder(in_channels=config.hidden, out_channels=config.hidden // 2, act=config.encoder_act)
-    encoder_2 = SimpleEncoder(in_channels=config.hidden, out_channels=config.hidden // 2, act=config.encoder_act)
-    encoder_general = SimpleEncoder(in_channels=config.hidden, out_channels=config.hidden // 2, act=config.encoder_act)
-
-    decoder_1 = SimpleDecoder(in_channels=config.hidden // 2, out_channels=config.hidden)
-    decoder_2 = SimpleDecoder(in_channels=config.hidden // 2, out_channels=config.hidden)
-
-    classifier = Classifier(in_channels=config.hidden // 2, n_classes=2)
-
-    networks = dict(extractor_1=extractor_1, extractor_2=extractor_2,
-                    encoder_1=encoder_1, encoder_2=encoder_2, encoder_general=encoder_general,
-                    decoder_1=decoder_1, decoder_2=decoder_2,
-                    classifier=classifier)
-
-    return networks
-
-
 def build_networks(config: argparse.Namespace or edict, **kwargs):
     # TODO: change x_dim to x1_dim and x2_dim
     extractor_1 = Extractor(in_channels=config.x1_dim, out_channels=config.hidden)
@@ -366,33 +226,159 @@ def build_networks(config: argparse.Namespace or edict, **kwargs):
     return networks
 
 
-def build_short_networks(config: argparse.Namespace or edict, **kwargs):
+class DataGenerator(object):
 
-    extractor_1 = Extractor(in_channels=config.x1_dim, out_channels=config.hidden)
-    extractor_2 = Extractor(in_channels=config.x2_dim, out_channels=config.hidden)
-    classifier = Classifier(in_channels=config.hidden, n_classes=2)
+    def __init__(self, zs_dim=16, z1_dim=16, z2_dim=16, rho=0.5, sigma=1.0, random_state=2021):
 
-    networks = dict(extractor_1=extractor_1, extractor_2=extractor_2, classifier=classifier)
+        # save arguments
+        self.zs_dim = zs_dim
+        self.z1_dim = z1_dim
+        self.z2_dim = z2_dim
+        self.rho = rho
+        self.sigma = sigma
+        self.random_state = random_state
 
-    return networks
+        # initialize covariance matrix
+        set_random_state(random_state=self.random_state)
+        self._create_covariance()
+
+    def sample_z(self, mu, n_samples):
+        set_random_state(random_state=self.random_state)
+        total_dim = self.zs_dim + self.z1_dim + self.z2_dim
+        mean = np.full(shape=total_dim, fill_value=mu)
+
+        samples = np.random.multivariate_normal(mean=mean, cov=self.cov, size=n_samples)
+
+        zs = samples[:, :self.zs_dim]
+        z1 = samples[:, self.zs_dim:self.zs_dim + self.z1_dim]
+        z2 = samples[:, self.zs_dim + self.z1_dim:]
+
+        zs = torch.tensor(zs, dtype=torch.float)
+        z1 = torch.tensor(z1, dtype=torch.float)
+        z2 = torch.tensor(z2, dtype=torch.float)
+
+        return zs, z1, z2
+
+    def _create_covariance(self):
+
+        total_dim = self.zs_dim + self.z1_dim + self.z2_dim
+
+        zs_cov = self.single_covariance(self.zs_dim)
+        z1_cov = self.single_covariance(self.z1_dim)
+        z2_cov = self.single_covariance(self.z2_dim)
+
+        cov = np.zeros((total_dim, total_dim))
+        cov[:self.zs_dim, :self.zs_dim] = zs_cov
+        cov[self.zs_dim:self.zs_dim + self.z1_dim, self.zs_dim:self.zs_dim + self.z1_dim] = z1_cov
+        cov[self.zs_dim + self.z1_dim:, self.zs_dim + self.z1_dim:] = z2_cov
+
+        self.cov = cov
+
+    def single_covariance(self, z_dim):
+        cov = np.empty((z_dim, z_dim))
+        cov[0, :] = np.arange(z_dim)
+        for i in range(1, z_dim):
+            cov[i, :] = cov[i - 1, :] - 1
+        cov = np.abs(cov)
+        cov = np.power(self.rho, cov) * self.sigma ** 2
+        return cov
+
+    def _create_layer(self, xs_dim, x1_dim, x2_dim, slope=0.1):
+        set_random_state(random_state=self.random_state)
+        self.layer_s = nn.Sequential(collections.OrderedDict(
+            [('linear', nn.Linear(self.zs_dim, xs_dim)),
+             ('relu', nn.LeakyReLU(negative_slope=slope))]))
+        self.layer_1 = nn.Sequential(collections.OrderedDict(
+            [('linear', nn.Linear(self.z1_dim, x1_dim)),
+             ('relu', nn.LeakyReLU(negative_slope=slope))]))
+        self.layer_2 = nn.Sequential(collections.OrderedDict(
+            [('linear', nn.Linear(self.z2_dim, x2_dim)),
+             ('relu', nn.LeakyReLU(negative_slope=slope))]))
+
+    def sample_x(self, zs, z1, z2):
+        xs = self.layer_s(zs).detach()
+        x1 = self.layer_1(z1).detach()
+        x2 = self.layer_2(z2).detach()
+        return xs, x1, x2
+
+    def generate_data(self, mu_0, mu_1, xs_dim, x1_dim, x2_dim, slope, n_complete, n_incomplete, n_test):
+        self._create_layer(xs_dim=xs_dim, x1_dim=x1_dim, x2_dim=x2_dim, slope=slope)
+
+        # complete data
+        # class 0 & class1
+        zs_0, z1_0, z2_0 = self.sample_z(mu=mu_0, n_samples=(n_complete+n_test)//2)
+        self.random_state = self.random_state + 100
+        zs_1, z1_1, z2_1 = self.sample_z(mu=mu_1, n_samples=(n_complete+n_test)//2)
+
+        # z -> x (first notation: modality / second notation: class)
+        xs_0, x1_0, x2_0 = self.layer_s(zs_0), self.layer_1(z1_0), self.layer_2(z2_0)
+        xs_1, x1_1, x2_1 = self.layer_s(zs_1), self.layer_1(z1_1), self.layer_2(z2_1)
+
+        X1_0 = torch.concat([xs_0, x1_0], dim=1)
+        X1_1 = torch.concat([xs_1, x1_1], dim=1)
+        x1_complete = torch.concat([X1_0, X1_1], dim=0)
+
+        X2_0 = torch.concat([xs_0, x2_0], dim=1)
+        X2_1 = torch.concat([xs_1, x2_1], dim=1)
+        x2_complete = torch.concat([X2_0, X2_1], dim=0)
+
+        y_complete = [0] * len(X1_0) + [1] * len(X1_1)
+
+        x1_train_complete, x1_test, x2_train_complete, x2_test, y_train_complete, y_test = \
+            train_test_split(x1_complete, x2_complete, y_complete,
+                             test_size=n_test, random_state=self.random_state,
+                             stratify=y_complete)
+
+        # incomplete data: modality 1
+        if n_incomplete > 0:
+            self.random_state = self.random_state + 100
+            zs_0, z1_0, _ = self.sample_z(mu=mu_0, n_samples=n_incomplete//2)
+            self.random_state = self.random_state + 100
+            zs_1, z1_1, _ = self.sample_z(mu=mu_1, n_samples=n_incomplete//2)
+
+            xs_0, x1_0 = self.layer_s(zs_0), self.layer_1(z1_0)
+            xs_1, x1_1 = self.layer_s(zs_1), self.layer_1(z1_1)
+            X1_0 = torch.concat([xs_0, x1_0], dim=1)
+            X1_1 = torch.concat([xs_1, x1_1], dim=1)
+            x1_train_incomplete = torch.concat([X1_0, X1_1], dim=0)
+            y_train_incomplete = [0] * len(X1_0) + [1] * len(X1_1)
+        else:
+            x1_train_incomplete = None
+            y_train_incomplete = None
+
+        dataset = dict(x1_train_complete=x1_train_complete,
+                       x2_train_complete=x2_train_complete,
+                       y_train_complete=y_train_complete,
+                       x1_train_incomplete=x1_train_incomplete,
+                       y_train_incomplete=y_train_incomplete,
+                       x1_test=x1_test,
+                       x2_test=x2_test,
+                       y_test=y_test)
+
+        return dataset
 
 
-def is_activation_layer(layer):
-    activation_layers = (nn.ReLU, nn.Sigmoid, nn.Tanh, nn.LeakyReLU, nn.PReLU)
-    return isinstance(layer, activation_layers)
+if __name__ == '__main__':
 
+    # data generation
+    data_generator = DataGenerator(zs_dim=16, z1_dim=16, z2_dim=16,
+                                   rho=0.5, sigma=1.0, random_state=2021)
+    data_generator._create_layer(xs_dim=32, x1_dim=32, x2_dim=32)
+    z0, z1, z2 = data_generator.sample_z(mu=0, n_samples=100)
+    x0, x1, x2 = data_generator.sample_x(z0, z1, z2)
 
-def remove_activation_from_layers(network):
-    new_layers_dict = collections.OrderedDict()
-    for name, layer in network.layers.named_children():
-        if not isinstance(layer, (nn.ReLU, nn.LeakyReLU, nn.Sigmoid)):
-            new_layers_dict[name] = layer
-    network.layers = nn.Sequential(new_layers_dict)
-
-
-if __name__ == 'main':
-    dataset = create_dataset(n_train=1000, n_test=1000, x1_dim=50, x2_dim=50, xs1_dim=20, xs2_dim=20,
-                             overlap_dim=15, hyperplane_dim=500, missing_rate=0.3, random_state=2021)
+    # experiment 1. only complete data, but different gamma (common representation ratio)
+    # z_dim = total dimension
+    # z_dim = 32
+    # for z0_dim in [0, 16, 32]:
+    #     z1_dim = int(z_dim - z0_dim)
+    #     z2_dim = int(z_dim - z0_dim)
+    data_generator = DataGenerator(zs_dim=16, z1_dim=16, z2_dim=16,
+                                   rho=0.5, sigma=1.0, random_state=2021)
+    datasets = data_generator.generate_data(mu_0=0.0, mu_1=1.0,
+                                            xs_dim=20, x1_dim=20, x2_dim=20,
+                                            slope=0.1,
+                                            n_complete=500, n_incomplete=200, n_test=500)
 
     from easydict import EasyDict as edict
     config = edict
@@ -401,12 +387,6 @@ if __name__ == 'main':
     config.hidden = 25
     config.encoder_act = 'relu'
     networks = build_networks(config=config)
-
-    for name, network in networks.items():
-        print(network)
-
-    for network in networks.values():
-        remove_activation_from_layers(network)
 
     for name, network in networks.items():
         print(network)
