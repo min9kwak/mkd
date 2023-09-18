@@ -190,7 +190,7 @@ class ConfigSimulation(object):
         parser.add_argument('--mixed_precision', type=str2bool, default=False, help='Use float16 precision.')
 
         # train level
-        parser.add_argument('--train_level', type=parse_numbers, default="1,2,3,4",
+        parser.add_argument('--train_level', type=parse_numbers, default="1,2,3",
                             help='1: Single from scratch,'
                                  '2: SMT & SMT-Student & Final'
                                  '3: Multi & Multi-Student')
@@ -199,32 +199,28 @@ class ConfigSimulation(object):
         parser.add_argument('--epochs_single', type=int, default=30, help='Number of training epochs.')
         parser.add_argument('--learning_rate_single', type=float, default=0.0001,
                             help='Base learning rate to start from.')
-        parser.add_argument('--weight_decay_single', type=float, default=0.0001, help='Weight decay factor.')
 
         # smt
         parser.add_argument('--epochs_smt', type=int, default=100, help='Number of training epochs.')
         parser.add_argument('--learning_rate_smt', type=float, default=0.001, help='Base learning rate to start from.')
-        parser.add_argument('--weight_decay_smt', type=float, default=0.0001, help='Weight decay factor.')
 
         # smt-student
         parser.add_argument('--epochs_smt_student', type=int, default=30, help='Number of training epochs.')
         parser.add_argument('--learning_rate_smt_student', type=float, default=0.0001, help='Base learning rate to start from.')
-        parser.add_argument('--weight_decay_smt_student', type=float, default=0.0001, help='Weight decay factor.')
 
         # final
         parser.add_argument('--epochs_final', type=int, default=100, help='Number of training epochs.')
         parser.add_argument('--learning_rate_final', type=float, default=0.001, help='Base learning rate to start from.')
-        parser.add_argument('--weight_decay_final', type=float, default=0.0001, help='Weight decay factor.')
 
         # multi
         parser.add_argument('--epochs_multi', type=int, default=30, help='Number of training epochs.')
         parser.add_argument('--learning_rate_multi', type=float, default=0.0001, help='Base learning rate to start from.')
-        parser.add_argument('--weight_decay_multi', type=float, default=0.0001, help='Weight decay factor.')
 
         # multi-student
         parser.add_argument('--epochs_multi_student', type=int, default=30, help='Number of training epochs.')
         parser.add_argument('--learning_rate_multi_student', type=float, default=0.0001, help='Base learning rate to start from.')
-        parser.add_argument('--weight_decay_multi_student', type=float, default=0.0001, help='Weight decay factor.')
+
+        parser.add_argument('--weight_decay', type=float, default=0.0001, help='Weight decay factor.')
 
         return parser
 

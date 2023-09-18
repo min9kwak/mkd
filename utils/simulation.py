@@ -205,18 +205,18 @@ class Classifier(nn.Module):
 
 
 def build_networks(config: argparse.Namespace or edict, **kwargs):
-    # TODO: change x_dim to x1_dim and x2_dim
-    extractor_1 = Extractor(in_channels=config.x1_dim, out_channels=config.hidden)
-    extractor_2 = Extractor(in_channels=config.x2_dim, out_channels=config.hidden)
 
-    encoder_1 = Encoder(in_channels=config.hidden, out_channels=config.hidden // 2, act=config.encoder_act)
-    encoder_2 = Encoder(in_channels=config.hidden, out_channels=config.hidden // 2, act=config.encoder_act)
-    encoder_general = Encoder(in_channels=config.hidden, out_channels=config.hidden // 2, act=config.encoder_act)
+    extractor_1 = Extractor(in_channels=config.xs_dim + config.x1_dim, out_channels=config.hidden)
+    extractor_2 = Extractor(in_channels=config.xs_dim + config.x2_dim, out_channels=config.hidden)
 
-    decoder_1 = Decoder(in_channels=config.hidden // 2, out_channels=config.hidden)
-    decoder_2 = Decoder(in_channels=config.hidden // 2, out_channels=config.hidden)
+    encoder_1 = Encoder(in_channels=config.hidden, out_channels=config.hidden, act=config.encoder_act)
+    encoder_2 = Encoder(in_channels=config.hidden, out_channels=config.hidden, act=config.encoder_act)
+    encoder_general = Encoder(in_channels=config.hidden, out_channels=config.hidden, act=config.encoder_act)
 
-    classifier = Classifier(in_channels=config.hidden // 2, n_classes=2)
+    decoder_1 = Decoder(in_channels=config.hidden, out_channels=config.hidden)
+    decoder_2 = Decoder(in_channels=config.hidden, out_channels=config.hidden)
+
+    classifier = Classifier(in_channels=config.hidden, n_classes=2)
 
     networks = dict(extractor_1=extractor_1, extractor_2=extractor_2,
                     encoder_1=encoder_1, encoder_2=encoder_2, encoder_general=encoder_general,
@@ -323,11 +323,17 @@ class DataGenerator(object):
         x2_complete = torch.concat([X2_0, X2_1], dim=0)
 
         y_complete = [0] * len(X1_0) + [1] * len(X1_1)
+        y_complete = np.array(y_complete)
 
         x1_train_complete, x1_test, x2_train_complete, x2_test, y_train_complete, y_test = \
             train_test_split(x1_complete, x2_complete, y_complete,
                              test_size=n_test, random_state=self.random_state,
                              stratify=y_complete)
+
+        x1_train_complete = x1_train_complete.detach()
+        x1_test = x1_test.detach()
+        x2_train_complete = x2_train_complete.detach()
+        x2_test = x2_test.detach()
 
         # incomplete data: modality 1
         if n_incomplete > 0:
@@ -341,7 +347,10 @@ class DataGenerator(object):
             X1_0 = torch.concat([xs_0, x1_0], dim=1)
             X1_1 = torch.concat([xs_1, x1_1], dim=1)
             x1_train_incomplete = torch.concat([X1_0, X1_1], dim=0)
+            x1_train_incomplete = x1_train_incomplete.detach()
+
             y_train_incomplete = [0] * len(X1_0) + [1] * len(X1_1)
+            y_train_incomplete = np.array(y_train_incomplete)
         else:
             x1_train_incomplete = None
             y_train_incomplete = None
@@ -382,11 +391,14 @@ if __name__ == '__main__':
 
     from easydict import EasyDict as edict
     config = edict
-    config.x1_dim = 50
-    config.x2_dim = 50
+    config.xs_dim = 20
+    config.x1_dim = 20
+    config.x2_dim = 20
     config.hidden = 25
     config.encoder_act = 'relu'
     networks = build_networks(config=config)
 
     for name, network in networks.items():
         print(network)
+
+    datasets['x1_train_complete']

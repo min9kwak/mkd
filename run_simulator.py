@@ -13,7 +13,7 @@ import torch.nn as nn
 
 from configs.simulation import ConfigSimulation
 from tasks.simulation.simulator import Simulator
-from utils.simulation import create_dataset, MultiModalDataset
+from utils.simulation import DataGenerator, MultiModalDataset
 
 from utils.loss import SimCosineLoss
 from utils.loss import DiffCosineLoss
@@ -28,17 +28,17 @@ def main():
 
     config = ConfigSimulation.parse_arguments()
 
-    denom = config.xs1_dim + config.xs2_dim - config.overlap_dim
-    alpha = (config.xs1_dim - config.overlap_dim) / denom
-    beta = (config.xs2_dim - config.overlap_dim) / denom
-    gamma = 1 - (alpha + beta)
+    denom = config.z1_dim + config.z2_dim + config.zs_dim
+    alpha = config.z1_dim / denom
+    beta = config.z2_dim / denom
+    gamma = config.zs_dim / denom
 
     setattr(config, 'alpha', alpha)
     setattr(config, 'beta', beta)
     setattr(config, 'gamma', gamma)
 
-    if config.missing_rate == -1.0:
-        setattr(config, 'missing_rate', None)
+    missing_rate = config.n_incomplete / config.n_complete + config.n_incomplete
+    setattr(config, 'missing_rate', missing_rate)
 
     config.task = 'simulation'
 
@@ -74,27 +74,39 @@ def main_worker(local_rank: int, config: argparse.Namespace):
     config.num_workers = config.num_workers // config.num_gpus_per_node
 
     # Dataset
-    dataset = create_dataset(n_train=config.n_train, n_test=config.n_test,
-                             x1_dim=config.x1_dim, x2_dim=config.x2_dim,
-                             xs1_dim=config.xs1_dim, xs2_dim=config.xs2_dim,
-                             overlap_dim=config.overlap_dim, hyperplane_dim=config.hyperplane_dim,
-                             missing_rate=config.missing_rate, random_state=config.random_state)
+    generator = DataGenerator(zs_dim=config.zs_dim, z1_dim=config.z1_dim, z2_dim=config.z2_dim,
+                              rho=config.rho, sigma=config.sigma, random_state=config.random_state)
+    dataset = generator.generate_data(mu_0=config.mu_0, mu_1=config.mu_1,
+                                      xs_dim=config.xs_dim, x1_dim=config.x1_dim, x2_dim=config.x2_dim,
+                                      slope=config.slope,
+                                      n_complete=config.n_complete, n_incomplete=config.n_incomplete,
+                                      n_test=config.n_test)
 
     train_complete_set = MultiModalDataset(x1=dataset['x1_train_complete'],
                                            x2=dataset['x2_train_complete'],
                                            y=dataset['y_train_complete'])
-    train_incomplete_set = MultiModalDataset(x1=dataset['x1_train_incomplete'],
-                                             x2=None,
-                                             y=dataset['y_train_incomplete'])
     test_set = MultiModalDataset(x1=dataset['x1_test'],
                                  x2=dataset['x2_test'],
                                  y=dataset['y_test'])
 
-    # dataset for scratch
-    x1_total = np.concatenate([dataset['x1_train_complete'], dataset['x1_train_incomplete']], axis=0)
-    y_total = np.concatenate([dataset['y_train_complete'], dataset['y_train_incomplete']], axis=0)
-    train_total_set = MultiModalDataset(x1=x1_total, x2=None, y=y_total)
+    if config.n_incomplete > 0:
+        train_incomplete_set = MultiModalDataset(x1=dataset['x1_train_incomplete'],
+                                                 x2=None,
+                                                 y=dataset['y_train_incomplete'])
+        setattr(config, 'use_incomplete', True)
+    else:
+        train_incomplete_set = None
+        setattr(config, 'use_incomplete', False)
 
+    # dataset for scratch
+    if config.use_incomplete:
+        x1_total = np.concatenate([dataset['x1_train_complete'], dataset['x1_train_incomplete']], axis=0)
+        y_total = np.concatenate([dataset['y_train_complete'], dataset['y_train_incomplete']], axis=0)
+    else:
+        x1_total = dataset['x1_train_complete']
+        y_total = dataset['y_train_complete']
+
+    train_total_set = MultiModalDataset(x1=x1_total, x2=None, y=y_total)
     datasets = {'train_complete': train_complete_set,
                 'train_incomplete': train_incomplete_set,
                 'train_total': train_total_set,
@@ -117,21 +129,20 @@ def main_worker(local_rank: int, config: argparse.Namespace):
     # create train_params
     train_params = {
         'single': {'epochs': config.epochs_single,
-                   'learning_rate': config.learning_rate_single,
-                   'weight_decay': config.weight_decay_single},
-        'teacher': {'epochs': config.epochs_teacher,
-                    'learning_rate': config.learning_rate_teacher,
-                    'weight_decay': config.weight_decay_teacher},
-        'kd': {'epochs': config.epochs_kd,
-               'learning_rate': config.learning_rate_kd,
-               'weight_decay': config.weight_decay_kd},
+                   'learning_rate': config.learning_rate_single},
+        'smt': {'epochs': config.epochs_smt,
+                'learning_rate': config.learning_rate_smt},
+        'smt_student': {'epochs': config.epochs_smt_student,
+                        'learning_rate': config.learning_rate_smt_student},
         'final': {'epochs': config.epochs_final,
-                  'learning_rate': config.learning_rate_final,
-                  'weight_decay': config.weight_decay_final},
+                  'learning_rate': config.learning_rate_final},
         'multi': {'epochs': config.epochs_multi,
-                  'learning_rate': config.learning_rate_multi,
-                  'weight_decay': config.weight_decay_multi},
+                  'learning_rate': config.learning_rate_multi},
+        'multi_student': {'epochs': config.epochs_multi_student,
+                          'learning_rate': config.learning_rate_multi_student},
     }
+    for mode in train_params.keys():
+        train_params[mode]['weight_decay'] = config.weight_decay
     setattr(config, 'train_params', train_params)
 
     # Loss Function
