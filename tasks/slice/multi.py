@@ -269,12 +269,16 @@ class Multi(object):
             z_mri = self.networks['extractor_mri'](x_mri)
             z_pet = self.networks['extractor_pet'](x_pet)
 
-        if self.add_type == 'concat':
-            z = torch.concat([z_mri, z_pet], dim=1)
+        if self.config.multi_mode == 'late':
+            logit_mri = self.networks['classifier_mri'](z_mri)
+            logit_pet = self.networks['classifier'](z_pet)
+            logit = (logit_mri + logit_pet) / 2
         else:
-            z = z_mri + z_pet
-
-        logit = self.networks['classifier'](z)
+            if self.add_type == 'concat':
+                z = torch.concat([z_mri, z_pet], dim=1)
+            else:
+                z = z_mri + z_pet
+            logit = self.networks['classifier'](z)
         loss_ce = self.loss_function_ce(logit, y)
 
         return loss_ce, y, logit

@@ -1,6 +1,6 @@
 echo "Experiments Started"
 SERVER=workstation3
-GPUS=00
+GPUS=5
 
 DATA_TYPE=multi
 
@@ -23,8 +23,9 @@ ADD_TYPE=add
 
 BALANCE=True
 SAMPLER_TYPE=stratified
+MULTI_MODE=late
 
-for RANDOM_STATE in {2021..2025}
+for RANDOM_STATE in {2021..2030}
 do
 	for LEARNING_RATE in 0.001
 	do
@@ -50,6 +51,7 @@ do
       --save_every 1000 \
       --balance $BALANCE \
       --sampler_type $SAMPLER_TYPE \
+      --multi_mode $MULTI_MODE \
       --add_type $ADD_TYPE \
       --extended $EXTENDED
     done

@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import argparse
+import copy
 import os
 import sys
 import time
@@ -123,6 +124,9 @@ def main_worker(local_rank: int, config: argparse.Namespace):
         networks = {k: v for k, v in networks.items() if k in network_names and v is not None}
     else:
         networks = build_networks_multi(config=config)
+
+    if config.multi_mode == 'late':
+        networks['classifier_mri'] = copy.deepcopy(networks['classifier'])
 
     # Cross Entropy Loss Function
     class_weight = None

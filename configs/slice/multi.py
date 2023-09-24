@@ -119,6 +119,7 @@ class SliceMultiConfig(ConfigBase):
         parser = argparse.ArgumentParser('Multi', add_help=False)
         parser.add_argument('--balance', type=str2bool, default=True, help='apply class balance weight')
         parser.add_argument('--sampler_type', type=str, default='stratified', choices=('over', 'stratified'))
+        parser.add_argument('--multi_mode', type=str, default='intermediate', choices=('intermediate', 'late'))
         parser.add_argument('--different_lr', type=str2bool, help='apply class balance weight')
 
         return parser
