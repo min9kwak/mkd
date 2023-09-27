@@ -17,22 +17,26 @@ MU_0=0.0
 MU_1=0.5
 
 N_COMPLETE=1000
-N_INCOMPLETE=0
+N_INCOMPLETE=1000
 N_TEST=1000
 
 HIDDEN=10
+SIMPLE=True
 
 ALPHA_CE=1.0
-ALPHA_SIM=10.0
-ALPHA_DIFF=5.0
+ALPHA_SIM_SMT=5.0
+ALPHA_SIM_FINAL=5.0
+ALPHA_DIFF=1.0
 ALPHA_RECON=100.0
 ALPHA_KD_CLF=100.0
 ALPHA_KD_REPR=100.0
 
-for RANDOM_STATE in {2021..2040}; do
-  for ALPHA_CE in 1.0 2.0 5.0 7.0 10.0; do
-    for ALPHA_SIM in 1.0 2.0 5.0 7.0 10.0; do
-      for ALPHA_DIFF in 1.0 2.0 5.0 7.0 10.0; do
+for RANDOM_STATE in {2021..2050}; do
+  for ALPHA_CE in 1.0; do
+    for ALPHA_SIM_FINAL in 5.0; do
+      for ZS_DIM in 2 6 10 14 18 22; do
+        Z1_DIM=$(((30 - ZS_DIM) / 2))
+        Z2_DIM=$Z1_DIM
         python ./run_simulator.py \
         --server $SERVER \
         --gpus $GPUS \
@@ -49,9 +53,11 @@ for RANDOM_STATE in {2021..2040}; do
         --n_complete $N_COMPLETE \
         --n_incomplete $N_INCOMPLETE \
         --n_test $N_TEST \
+        --simple $SIMPLE \
         --hidden $HIDDEN \
         --alpha_ce $ALPHA_CE \
-        --alpha_sim $ALPHA_SIM \
+        --alpha_sim_smt $ALPHA_SIM_SMT \
+        --alpha_sim_final $ALPHA_SIM_FINAL \
         --alpha_diff $ALPHA_DIFF \
         --alpha_recon $ALPHA_RECON \
         --alpha_kd_clf $ALPHA_KD_CLF \

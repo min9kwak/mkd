@@ -394,7 +394,7 @@ class Simulator:
         loss_ce = self.loss_function_ce(logit, y)
 
         loss = self.config.alpha_ce * loss_ce + \
-               self.config.alpha_sim * loss_sim + \
+               self.config.alpha_sim_smt * loss_sim + \
                self.config.alpha_diff * loss_diff + \
                self.config.alpha_recon * loss_recon
 
@@ -679,7 +679,7 @@ class Simulator:
         loss_kd = loss_kd.mean()
 
         loss = self.config.alpha_ce * loss_ce + \
-               self.config.alpha_sim * loss_sim + \
+               self.config.alpha_sim_final * loss_sim + \
                self.config.alpha_diff * loss_diff + \
                self.config.alpha_recon * loss_recon + \
                self.config.alpha_kd_repr * loss_kd

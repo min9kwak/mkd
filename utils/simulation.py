@@ -209,12 +209,20 @@ def build_networks(config: argparse.Namespace or edict, **kwargs):
     extractor_1 = Extractor(in_channels=config.xs_dim + config.x1_dim, out_channels=config.hidden)
     extractor_2 = Extractor(in_channels=config.xs_dim + config.x2_dim, out_channels=config.hidden)
 
-    encoder_1 = Encoder(in_channels=config.hidden, out_channels=config.hidden, act=config.encoder_act)
-    encoder_2 = Encoder(in_channels=config.hidden, out_channels=config.hidden, act=config.encoder_act)
-    encoder_general = Encoder(in_channels=config.hidden, out_channels=config.hidden, act=config.encoder_act)
+    if config.simple:
+        encoder_1 = SimpleEncoder(in_channels=config.hidden, out_channels=config.hidden, act=config.encoder_act)
+        encoder_2 = SimpleEncoder(in_channels=config.hidden, out_channels=config.hidden, act=config.encoder_act)
+        encoder_general = SimpleEncoder(in_channels=config.hidden, out_channels=config.hidden, act=config.encoder_act)
 
-    decoder_1 = Decoder(in_channels=config.hidden, out_channels=config.hidden)
-    decoder_2 = Decoder(in_channels=config.hidden, out_channels=config.hidden)
+        decoder_1 = SimpleDecoder(in_channels=config.hidden, out_channels=config.hidden)
+        decoder_2 = SimpleDecoder(in_channels=config.hidden, out_channels=config.hidden)
+    else:
+        encoder_1 = Encoder(in_channels=config.hidden, out_channels=config.hidden, act=config.encoder_act)
+        encoder_2 = Encoder(in_channels=config.hidden, out_channels=config.hidden, act=config.encoder_act)
+        encoder_general = Encoder(in_channels=config.hidden, out_channels=config.hidden, act=config.encoder_act)
+
+        decoder_1 = Decoder(in_channels=config.hidden, out_channels=config.hidden)
+        decoder_2 = Decoder(in_channels=config.hidden, out_channels=config.hidden)
 
     classifier = Classifier(in_channels=config.hidden, n_classes=2)
 

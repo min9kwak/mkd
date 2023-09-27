@@ -113,12 +113,13 @@ class ConfigSimulation(object):
     @staticmethod
     def task_specific_parser() -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser("Simulation Task", add_help=False)
-        parser.add_argument('--alpha_ce', type=float, default=10.0)
-        parser.add_argument('--alpha_sim', type=float, default=5.0)
-        parser.add_argument('--alpha_diff', type=float, default=5.0)
-        parser.add_argument('--alpha_recon', type=float, default=100.0)
-        parser.add_argument('--alpha_kd_clf', type=float, default=100.0)
-        parser.add_argument('--alpha_kd_repr', type=float, default=100.0)
+        parser.add_argument('--alpha_ce', type=float, default=1.0)
+        parser.add_argument('--alpha_sim_smt', type=float, default=5.0)
+        parser.add_argument('--alpha_sim_final', type=float, default=5.0)
+        parser.add_argument('--alpha_diff', type=float, default=1.0)
+        parser.add_argument('--alpha_recon', type=float, default=10.0)
+        parser.add_argument('--alpha_kd_clf', type=float, default=10.0)
+        parser.add_argument('--alpha_kd_repr', type=float, default=10.0)
 
         parser.add_argument('--temperature', type=float, default=5.0)
 
@@ -228,6 +229,7 @@ class ConfigSimulation(object):
     def model_parser() -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser("Simulation Data", add_help=False)
         parser.add_argument('--hidden', type=int, default=25)
+        parser.add_argument('--simple', type=str2bool, default=False)
         parser.add_argument('--encoder_act', type=handle_none, default='relu')
 
         return parser
