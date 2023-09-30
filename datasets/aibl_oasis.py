@@ -9,18 +9,31 @@ from sklearn.utils import class_weight
 from sklearn.preprocessing import MinMaxScaler
 
 
+def update_conv_based_on_label(row, label_column):
+    if row['Source'] == 'OASIS' and pd.notna(row[label_column]):
+        return 'NC' if int(row[label_column]) == 0 else 'C'
+    return row['Conv']
+
+
+def update_data_info(df, label_choice):
+    df['Conv'] = df.apply(lambda row: update_conv_based_on_label(row, label_choice), axis=1)
+    return df
+
+
 # AIBL & OASIS
 class AOProcessor(object):
     def __init__(self,
                  root: str = 'D:/data',
-                 data_info: str = 'aibl_oasis_data_info_new.csv',
+                 data_info: str = 'aibl_oasis_data_info_all.csv',
                  external_data_type: str = 'mri',
+                 label_column: int = 1,
                  use_cdr: bool = True,
                  scale_demo: bool = True,
                  random_state: int = 2021):
 
         # Processor for PiB scans
         self.root = root
+        self.label_column = label_column
         self.use_cdr = use_cdr
         self.scale_demo = scale_demo
         self.random_state = random_state
@@ -40,6 +53,8 @@ class AOProcessor(object):
         # read data_info
         data_info = os.path.join(root, data_info)
         data_info = pd.read_csv(data_info, converters={'RID': str})
+
+        data_info = update_data_info(data_info, label_choice=f'label_m{self.label_column}')
 
         # remove failed image
         data_info['PIB Path'] = data_info['PIB Path'].replace('OAS30896_PIB_d1601.pkl', np.nan)
@@ -169,7 +184,7 @@ class AODataset(Dataset):
 
 if __name__ == '__main__':
 
-    processor = AOProcessor(external_data_type='mri')
+    processor = AOProcessor(external_data_type='mri', label_column=1)
     datasets = processor.process()
 
     from datasets.slice.transforms import make_mri_transforms
@@ -182,7 +197,7 @@ if __name__ == '__main__':
                                                           blur_std_mri=None,
                                                           train_slices='fixed',
                                                           prob=0.5)
-    test_set = AODataset(dataset=datasets['test'], external_data_type='mri+av45',
+    test_set = AODataset(dataset=datasets['test'], external_data_type='mri',
                          mri_transform=train_transform, pet_transform=train_transform)
 
     from torch.utils.data import DataLoader
@@ -192,10 +207,11 @@ if __name__ == '__main__':
                              sampler=None, drop_last=False)
     for batch in tqdm.tqdm(test_loader):
         ''
-    batch.keys()
-    batch['mri'][0].shape
-    batch['demo']
-    batch['y']
-    batch['idx']
-    batch['pet'][0].shape
-    datasets['test']['source']
+
+    # check data existence
+    data_file = pd.read_csv('D:/data/aibl_oasis_data_info_all.csv')
+    data_file = data_file.loc[data_file['Source'] == 'OASIS']
+
+    mri_filenames = data_file['MR Path'].dropna().tolist()
+    pib_filenames = data_file['PIB Path'].dropna().tolist()
+    av45_filenames = data_file['AV45 Path'].dropna().tolist()

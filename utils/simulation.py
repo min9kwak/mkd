@@ -234,6 +234,38 @@ def build_networks(config: argparse.Namespace or edict, **kwargs):
     return networks
 
 
+def build_networks_disc(config: argparse.Namespace or edict, **kwargs):
+    extractor_1 = Extractor(in_channels=config.xs_dim + config.x1_dim, out_channels=config.hidden)
+    extractor_2 = Extractor(in_channels=config.xs_dim + config.x2_dim, out_channels=config.hidden)
+
+    if config.simple:
+        encoder_1 = SimpleEncoder(in_channels=config.hidden, out_channels=config.hidden, act=config.encoder_act)
+        encoder_2 = SimpleEncoder(in_channels=config.hidden, out_channels=config.hidden, act=config.encoder_act)
+        encoder_general = SimpleEncoder(in_channels=config.hidden, out_channels=config.hidden, act=config.encoder_act)
+
+        decoder_1 = SimpleDecoder(in_channels=config.hidden, out_channels=config.hidden)
+        decoder_2 = SimpleDecoder(in_channels=config.hidden, out_channels=config.hidden)
+    else:
+        encoder_1 = Encoder(in_channels=config.hidden, out_channels=config.hidden, act=config.encoder_act)
+        encoder_2 = Encoder(in_channels=config.hidden, out_channels=config.hidden, act=config.encoder_act)
+        encoder_general = Encoder(in_channels=config.hidden, out_channels=config.hidden, act=config.encoder_act)
+
+        decoder_1 = Decoder(in_channels=config.hidden, out_channels=config.hidden)
+        decoder_2 = Decoder(in_channels=config.hidden, out_channels=config.hidden)
+
+    discriminator = Classifier(in_channels=config.hidden, n_classes=3)
+
+    classifier = Classifier(in_channels=config.hidden, n_classes=2)
+
+    networks = dict(extractor_1=extractor_1, extractor_2=extractor_2,
+                    encoder_1=encoder_1, encoder_2=encoder_2, encoder_general=encoder_general,
+                    decoder_1=decoder_1, decoder_2=decoder_2,
+                    discriminator=discriminator,
+                    classifier=classifier)
+
+    return networks
+
+
 class DataGenerator(object):
 
     def __init__(self, zs_dim=16, z1_dim=16, z2_dim=16, rho=0.5, sigma=1.0, random_state=2021):

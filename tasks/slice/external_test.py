@@ -266,8 +266,8 @@ class ExternalTest(object):
     def train_step_single(self, batch):
 
         x_mri = torch.concat(batch['mri']).float().to(self.local_rank)
-        source = batch['source'].long().repeat(self.pretrained_config.num_slices)
-        y = batch['y'].long()
+        source = batch['source'].long()
+        y = batch['y'].long().repeat(self.pretrained_config.num_slices).to(self.local_rank)
 
         # forward through final multi
         h_mri = self.networks['projector_mri_s'](self.networks['extractor_mri_s'](x_mri))

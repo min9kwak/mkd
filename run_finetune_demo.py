@@ -117,6 +117,9 @@ def main_worker(local_rank: int, config: argparse.Namespace, pretrained_config: 
         space=pretrained_config.space, n_points=pretrained_config.n_points, prob=pretrained_config.prob)
 
     # Dataset
+    if pretrained_config.missing_rate == -1.0:
+        setattr(pretrained_config, 'missing_rate', None)
+
     processor = BrainProcessor(root=pretrained_config.root,
                                data_file=pretrained_config.data_file,
                                mri_type=pretrained_config.mri_type,
@@ -129,6 +132,10 @@ def main_worker(local_rank: int, config: argparse.Namespace, pretrained_config: 
     datasets_dict = processor.process(validation_size=pretrained_config.validation_size,
                                       test_size=pretrained_config.test_size,
                                       missing_rate=pretrained_config.missing_rate)
+
+    if pretrained_config.missing_rate is None:
+        setattr(pretrained_config, 'missing_rate', -1.0)
+    setattr(pretrained_config, 'current_missing_rate', processor.current_missing_rate)
 
     if config.task_type == 'multi':
         train_set = BrainMulti(dataset=datasets_dict['mri_pet_complete_train'],
