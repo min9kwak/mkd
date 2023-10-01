@@ -18,7 +18,7 @@ from utils.logging import get_rich_pbar
 from utils.optimization import get_optimizer, get_cosine_scheduler
 
 
-class Simulator:
+class SimulatorDisc:
 
     def __init__(self):
 
@@ -39,8 +39,7 @@ class Simulator:
     def prepare(self,
                 config: argparse.Namespace,
                 loss_function_ce,
-                loss_function_sim,
-                loss_function_diff,
+                loss_function_disc,
                 loss_function_recon,
                 save_log,
                 local_rank: int = 0,
@@ -52,8 +51,7 @@ class Simulator:
         self.batch_size = config.batch_size
 
         self.loss_function_ce = loss_function_ce
-        self.loss_function_sim = loss_function_sim
-        self.loss_function_diff = loss_function_diff
+        self.loss_function_disc = loss_function_disc
         self.loss_function_recon = loss_function_recon
 
         self.save_log = save_log
@@ -314,25 +312,20 @@ class Simulator:
 
         self._set_learning_phase(train=train, train_mode='smt')
         steps = len(data_loader)
-        metric_names = ['total_loss', 'loss_ce', 'loss_sim',
-                        'loss_diff_specific', 'loss_diff_1', 'loss_diff_2',
+        metric_names = ['total_loss', 'loss_ce', 'loss_disc',
                         'loss_recon_1', 'loss_recon_2']
         result = {k: torch.zeros(steps, device=self.local_rank) for k in metric_names}
 
         y_true, y_pred = [], []
         for i, batch in enumerate(data_loader):
-            loss, loss_ce, loss_sim, loss_diff_specific, loss_diff_1, loss_diff_2, \
-            loss_recon_1, loss_recon_2, y, logit = self.train_smt_step(batch)
+            loss, loss_ce, loss_disc, loss_recon_1, loss_recon_2, y, logit = self.train_smt_step(batch)
             if train:
                 self.update(loss)
 
             # save
             result['total_loss'][i] = loss.detach()
             result['loss_ce'][i] = loss_ce.detach()
-            result['loss_sim'][i] = loss_sim.detach()
-            result['loss_diff_specific'][i] = loss_diff_specific.detach()
-            result['loss_diff_1'][i] = loss_diff_1.detach()
-            result['loss_diff_2'][i] = loss_diff_2.detach()
+            result['loss_disc'][i] = loss_disc.detach()
             result['loss_recon_1'][i] = loss_recon_1.detach()
             result['loss_recon_2'][i] = loss_recon_2.detach()
 
@@ -376,14 +369,13 @@ class Simulator:
         logit = self.networks['classifier'](z1_general + z2_general)
 
         # Losses
-        # difference
-        loss_diff_specific = self.loss_function_diff(z1, z2)
-        loss_diff_1 = self.loss_function_diff(z1, z1_general)
-        loss_diff_2 = self.loss_function_diff(z2, z2_general)
-        loss_diff = loss_diff_specific + loss_diff_1 + loss_diff_2
+        # discriminator
+        Z = torch.concat([z1_general, z2_general, z1, z2], dim=0)
+        y_pseudo = [0] * (len(z1_general) + len(z2_general)) + [1] * len(z1) + [2] * len(z2)
+        y_pseudo = torch.tensor(y_pseudo).long().to(self.local_rank)
+        logit_pseudo = self.networks['discriminator'](Z)
 
-        # similarity
-        loss_sim = self.loss_function_sim(z1_general, z2_general)
+        loss_disc = self.loss_function_disc(logit_pseudo, y_pseudo)
 
         # reconstruction
         loss_recon_1 = self.loss_function_recon(h1_recon, h1)
@@ -394,12 +386,10 @@ class Simulator:
         loss_ce = self.loss_function_ce(logit, y)
 
         loss = self.config.alpha_ce * loss_ce + \
-               self.config.alpha_sim_smt * loss_sim + \
-               self.config.alpha_diff * loss_diff + \
+               self.config.alpha_disc * loss_disc + \
                self.config.alpha_recon * loss_recon
 
-        return loss, loss_ce, loss_sim, loss_diff_specific, loss_diff_1, loss_diff_2,\
-               loss_recon_1, loss_recon_2, y, logit
+        return loss, loss_ce, loss_disc, loss_recon_1, loss_recon_2, y, logit
 
     def train_smt_student(self, data_complete_loader, data_incomplete_loader, train=True):
 
@@ -521,9 +511,7 @@ class Simulator:
     def train_final(self, data_complete_loader, data_incomplete_loader, train=True):
 
         self._set_learning_phase(train=train, train_mode='final')
-        metric_names = ['total_loss', 'loss_ce', 'loss_sim',
-                        'loss_diff_specific', 'loss_diff_1', 'loss_diff_2',
-                        'loss_recon_1', 'loss_recon_2', 'loss_kd']
+        metric_names = ['total_loss', 'loss_ce', 'loss_disc', 'loss_recon_1', 'loss_recon_2', 'loss_kd']
 
         if data_incomplete_loader is not None:
             steps = max(len(data_complete_loader), len(data_incomplete_loader))
@@ -545,18 +533,15 @@ class Simulator:
                     batch_c, batch_ic = batch_l, batch_s
                 else:
                     batch_c, batch_ic = batch_s, batch_l
-                loss, loss_ce, loss_sim, loss_diff_specific, loss_diff_1, loss_diff_2, \
-                loss_recon_1, loss_recon_2, loss_kd, y, logit = self.train_final_step(batch_c, batch_ic)
+                loss, loss_ce, loss_disc, loss_recon_1, loss_recon_2, loss_kd, y, logit = \
+                    self.train_final_step(batch_c, batch_ic)
                 if train:
                     self.update(loss)
 
                 # save
                 result['total_loss'][i] = loss.detach()
                 result['loss_ce'][i] = loss_ce.detach()
-                result['loss_sim'][i] = loss_sim.detach()
-                result['loss_diff_specific'][i] = loss_diff_specific.detach()
-                result['loss_diff_1'][i] = loss_diff_1.detach()
-                result['loss_diff_2'][i] = loss_diff_2.detach()
+                result['loss_disc'][i] = loss_disc.detach()
                 result['loss_recon_1'][i] = loss_recon_1.detach()
                 result['loss_recon_2'][i] = loss_recon_2.detach()
                 result['loss_kd'][i] = loss_kd.detach()
@@ -570,18 +555,15 @@ class Simulator:
 
             y_true, y_pred = [], []
             for i, batch in enumerate(data_complete_loader):
-                loss, loss_ce, loss_sim, loss_diff_specific, loss_diff_1, loss_diff_2, \
-                loss_recon_1, loss_recon_2, loss_kd, y, logit = self.train_final_step(batch, None)
+                loss, loss_ce, loss_disc, loss_recon_1, loss_recon_2, loss_kd, y, logit = \
+                    self.train_final_step(batch, None)
                 if train:
                     self.update(loss)
 
                 # save
                 result['total_loss'][i] = loss.detach()
                 result['loss_ce'][i] = loss_ce.detach()
-                result['loss_sim'][i] = loss_sim.detach()
-                result['loss_diff_specific'][i] = loss_diff_specific.detach()
-                result['loss_diff_1'][i] = loss_diff_1.detach()
-                result['loss_diff_2'][i] = loss_diff_2.detach()
+                result['loss_disc'][i] = loss_disc.detach()
                 result['loss_recon_1'][i] = loss_recon_1.detach()
                 result['loss_recon_2'][i] = loss_recon_2.detach()
                 result['loss_kd'][i] = loss_kd.detach()
@@ -633,14 +615,13 @@ class Simulator:
         logit = self.networks['classifier'](z1_general + z2_general + z1 + z2)
 
         # Losses
-        # difference
-        loss_diff_specific = self.loss_function_diff(z1, z2)
-        loss_diff_1 = self.loss_function_diff(z1, z1_general)
-        loss_diff_2 = self.loss_function_diff(z2, z2_general)
-        loss_diff = loss_diff_specific + loss_diff_1 + loss_diff_2
+        # discriminator
+        Z = torch.concat([z1_general, z2_general, z1, z2], dim=0)
+        y_pseudo = [0] * (len(z1_general) + len(z2_general)) + [1] * len(z1) + [2] * len(z2)
+        y_pseudo = torch.tensor(y_pseudo).long().to(self.local_rank)
+        logit_pseudo = self.networks['discriminator'](Z)
 
-        # similarity
-        loss_sim = self.loss_function_sim(z1_general, z2_general)
+        loss_disc = self.loss_function_disc(logit_pseudo, y_pseudo)
 
         # reconstruction
         loss_recon_1 = self.loss_function_recon(h1_recon, h1)
@@ -679,13 +660,11 @@ class Simulator:
         loss_kd = loss_kd.mean()
 
         loss = self.config.alpha_ce * loss_ce + \
-               self.config.alpha_sim_final * loss_sim + \
-               self.config.alpha_diff * loss_diff + \
+               self.config.alpha_disc * loss_disc + \
                self.config.alpha_recon * loss_recon + \
                self.config.alpha_kd_repr * loss_kd
 
-        return loss, loss_ce, loss_sim, loss_diff_specific, loss_diff_1, loss_diff_2, \
-               loss_recon_1, loss_recon_2, loss_kd, y, logit
+        return loss, loss_ce, loss_disc, loss_recon_1, loss_recon_2, loss_kd, y, logit
 
     def train_multi(self, data_loader, train=True):
 
@@ -870,7 +849,7 @@ class Simulator:
         weight_decay = train_params['weight_decay']
 
         # build networks and bring target pre-trained weights
-        networks = build_networks(config=self.config)
+        networks = build_networks_disc(config=self.config)
         networks_student = {
             'extractor_1_s': copy.deepcopy(networks['extractor_1']),
             'encoder_general_s': copy.deepcopy(networks['encoder_general']),
@@ -920,11 +899,13 @@ class Simulator:
         elif train_mode == 'multi':
             self.networks = copy.deepcopy(networks)
             del self.networks['encoder_general']
+            del self.networks['discriminator']
             for name in self.networks.keys():
                 params = params + [{'params': self.networks[name].parameters(), 'lr': learning_rate}]
 
         elif train_mode == 'multi_student':
             del networks['encoder_general']
+            del networks['discriminator']
             for k in networks.keys():
                 networks[k].load_state_dict(self.networks_multi[k].state_dict())
 

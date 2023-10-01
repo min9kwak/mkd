@@ -455,4 +455,5 @@ class ConfigSimulationDisc(object):
         parser.add_argument('--save_every', type=int, default=2000, help='Save model checkpoint every `save_every` epochs.')
         parser.add_argument('--enable_wandb', type=str2bool, default=True, help='Use Weights & Biases plugin.')
         parser.add_argument('--save_log', type=str2bool, default=True)
+        parser.add_argument('--note', type=str, default=None)
         return parser

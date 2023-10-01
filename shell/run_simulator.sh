@@ -65,7 +65,7 @@ for RANDOM_STATE in {2021..2050}; do
         --alpha_kd_clf $ALPHA_KD_CLF \
         --alpha_kd_repr $ALPHA_KD_REPR \
         --random_state $RANDOM_STATE \
-        --note=$NOTE
+        --note "$NOTE"
       done
     done
   done
