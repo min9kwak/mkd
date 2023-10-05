@@ -74,6 +74,8 @@ class Simulator:
                                          shuffle=True, drop_last=True),
             'train_total': DataLoader(dataset=datasets['train_total'], batch_size=self.batch_size,
                                       shuffle=True, drop_last=True),
+            'validation': DataLoader(dataset=datasets['validation'], batch_size=self.batch_size,
+                                     shuffle=False, drop_last=False),
             'test': DataLoader(dataset=datasets['test'], batch_size=self.batch_size,
                                shuffle=False, drop_last=False)
         }
@@ -97,7 +99,9 @@ class Simulator:
                     with torch.no_grad():
                         test_history = self.train_single(loaders['test'], train=False)
 
-                    epoch_history = self.make_epoch_history(train_history=train_history, test_history=test_history)
+                    epoch_history = self.make_epoch_history(train_history=train_history,
+                                                            validation_history=None,
+                                                            test_history=test_history)
                     if self.config.enable_wandb:
                         self.log_wandb(epoch_history=epoch_history)
                     if self.save_log:
@@ -124,9 +128,12 @@ class Simulator:
                     self.epoch = epoch
                     train_history = self.train_smt(loaders['train_complete'], train=True)
                     with torch.no_grad():
+                        validation_history = self.train_smt(loaders['validation'], train=False)
                         test_history = self.train_smt(loaders['test'], train=False)
 
-                    epoch_history = self.make_epoch_history(train_history=train_history, test_history=test_history)
+                    epoch_history = self.make_epoch_history(train_history=train_history,
+                                                            validation_history=validation_history,
+                                                            test_history=test_history)
 
                     if self.config.enable_wandb:
                         self.log_wandb(epoch_history=epoch_history)
@@ -154,9 +161,12 @@ class Simulator:
                     train_history = self.train_smt_student(loaders['train_complete'], loaders['train_incomplete'],
                                                            train=True)
                     with torch.no_grad():
+                        validation_history = self.train_smt_student(loaders['validation'], None, train=False)
                         test_history = self.train_smt_student(loaders['test'], None, train=False)
 
-                    epoch_history = self.make_epoch_history(train_history=train_history, test_history=test_history)
+                    epoch_history = self.make_epoch_history(train_history=train_history,
+                                                            validation_history=validation_history,
+                                                            test_history=test_history)
 
                     if self.config.enable_wandb:
                         self.log_wandb(epoch_history=epoch_history)
@@ -183,9 +193,12 @@ class Simulator:
                     train_history = self.train_final(loaders['train_complete'], loaders['train_incomplete'],
                                                      train=True)
                     with torch.no_grad():
+                        validation_history = self.train_final(loaders['validation'], None, train=False)
                         test_history = self.train_final(loaders['test'], None, train=False)
 
-                    epoch_history = self.make_epoch_history(train_history=train_history, test_history=test_history)
+                    epoch_history = self.make_epoch_history(train_history=train_history,
+                                                            validation_history=validation_history,
+                                                            test_history=test_history)
 
                     if self.config.enable_wandb:
                         self.log_wandb(epoch_history=epoch_history)
@@ -215,7 +228,9 @@ class Simulator:
                     with torch.no_grad():
                         test_history = self.train_multi(loaders['test'], train=False)
 
-                    epoch_history = self.make_epoch_history(train_history=train_history, test_history=test_history)
+                    epoch_history = self.make_epoch_history(train_history=train_history,
+                                                            validation_history=None,
+                                                            test_history=test_history)
 
                     if self.config.enable_wandb:
                         self.log_wandb(epoch_history=epoch_history)
@@ -244,7 +259,9 @@ class Simulator:
                     with torch.no_grad():
                         test_history = self.train_multi_student(loaders['test'], None, train=False)
 
-                    epoch_history = self.make_epoch_history(train_history=train_history, test_history=test_history)
+                    epoch_history = self.make_epoch_history(train_history=train_history,
+                                                            validation_history=None,
+                                                            test_history=test_history)
 
                     if self.config.enable_wandb:
                         self.log_wandb(epoch_history=epoch_history)
@@ -953,12 +970,18 @@ class Simulator:
 
         del networks, networks_student
 
-    def make_epoch_history(self, train_history: dict = None, test_history: dict = None):
+    def make_epoch_history(self,
+                           train_history: dict = None,
+                           validation_history: dict = None,
+                           test_history: dict = None):
         epoch_history = collections.defaultdict(dict)
         train_mode = self.train_mode
         if train_history is not None:
             for k, v in train_history.items():
                 epoch_history[f'{train_mode}-train/{k}'] = v
+        if validation_history is not None:
+            for k, v in validation_history.items():
+                epoch_history[f'{train_mode}-validation/{k}'] = v
         if test_history is not None:
             for k, v in test_history.items():
                 epoch_history[f'{train_mode}-test/{k}'] = v

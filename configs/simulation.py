@@ -166,6 +166,7 @@ class ConfigSimulation(object):
         # samples
         parser.add_argument('--n_complete', type=int, default=1000)
         parser.add_argument('--n_incomplete', type=int, default=0)
+        parser.add_argument('--n_validation', type=int, default=1000)
         parser.add_argument('--n_test', type=int, default=1000)
 
         parser.add_argument('--random_state', type=int, default=2021)

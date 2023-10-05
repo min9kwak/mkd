@@ -341,7 +341,7 @@ class DataGenerator(object):
         x2 = self.layer_2(z2).detach()
         return xs, x1, x2
 
-    def generate_data(self, mu_0, mu_1, xs_dim, x1_dim, x2_dim, slope, n_complete, n_incomplete, n_test):
+    def generate_data(self, mu_0, mu_1, xs_dim, x1_dim, x2_dim, slope, n_complete, n_incomplete, n_validation, n_test):
         self._create_layer(xs_dim=xs_dim, x1_dim=x1_dim, x2_dim=x2_dim, slope=slope)
 
         # complete data
@@ -395,11 +395,35 @@ class DataGenerator(object):
             x1_train_incomplete = None
             y_train_incomplete = None
 
+        # validation set
+        # TODO: combine with the previous train/test generation step
+        self.random_state = self.random_state + 100
+        zs_0, z1_0, z2_0 = self.sample_z(mu=mu_0, n_samples=n_validation // 2)
+        self.random_state = self.random_state + 100
+        zs_1, z1_1, z2_1 = self.sample_z(mu=mu_1, n_samples=n_validation // 2)
+
+        xs_0, x1_0, x2_0 = self.layer_s(zs_0), self.layer_1(z1_0), self.layer_2(z2_0)
+        xs_1, x1_1, x2_1 = self.layer_s(zs_1), self.layer_1(z1_1), self.layer_2(z2_1)
+
+        X1_0 = torch.concat([xs_0, x1_0], dim=1)
+        X1_1 = torch.concat([xs_1, x1_1], dim=1)
+        x1_validation = torch.concat([X1_0, X1_1], dim=0).detach()
+
+        X2_0 = torch.concat([xs_0, x2_0], dim=1)
+        X2_1 = torch.concat([xs_1, x2_1], dim=1)
+        x2_validation = torch.concat([X2_0, X2_1], dim=0).detach()
+
+        y_complete = [0] * len(X1_0) + [1] * len(X1_1)
+        y_validation = np.array(y_complete)
+
         dataset = dict(x1_train_complete=x1_train_complete,
                        x2_train_complete=x2_train_complete,
                        y_train_complete=y_train_complete,
                        x1_train_incomplete=x1_train_incomplete,
                        y_train_incomplete=y_train_incomplete,
+                       x1_validation=x1_validation,
+                       x2_validation=x2_validation,
+                       y_validation=y_validation,
                        x1_test=x1_test,
                        x2_test=x2_test,
                        y_test=y_test)
@@ -427,7 +451,7 @@ if __name__ == '__main__':
     datasets = data_generator.generate_data(mu_0=0.0, mu_1=1.0,
                                             xs_dim=20, x1_dim=20, x2_dim=20,
                                             slope=0.1,
-                                            n_complete=500, n_incomplete=200, n_test=500)
+                                            n_complete=500, n_incomplete=200, n_validation=500, n_test=500)
 
     from easydict import EasyDict as edict
     config = edict

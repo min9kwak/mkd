@@ -16,8 +16,9 @@ X2_DIM=20
 MU_0=0.0
 MU_1=0.5
 
-N_COMPLETE=500
-N_INCOMPLETE=500
+N_COMPLETE=1000
+N_INCOMPLETE=1000
+N_VALIDATION=1000
 N_TEST=1000
 
 HIDDEN=10
@@ -27,18 +28,23 @@ ALPHA_CE=1.0
 ALPHA_SIM_SMT=2.0
 ALPHA_SIM_FINAL=2.0
 ALPHA_DIFF=1.0
-ALPHA_RECON=100.0
-ALPHA_KD_CLF=100.0
-ALPHA_KD_REPR=100.0
+ALPHA_RECON=1.0
+ALPHA_KD_CLF=1.0
+ALPHA_KD_REPR=1.0
+
+TRAIN_LEVEL="2"
 
 for RANDOM_STATE in {2021..2050}; do
-  for ALPHA_CE in 1.0; do
-    for N_COMPLETE in 200 300 500 600 1000; do
-      for ZS_DIM in 2 6 10 14 18 22; do
-        NOTE="maintain total dim"
-        N_COMPLETE=$N_INCOMPLETE
-        Z1_DIM=$(((30 - ZS_DIM) / 2))
-        Z2_DIM=$Z1_DIM
+  for ALPHA_SIM_SMT in 0.5 1.0 2.0 5.0 7.0 10.0; do
+    for ALPHA_DIFF in 1.0 2.0 5.0 7.0 10.0; do
+      for ZS_DIM in 10; do
+#        NOTE="maintain total dim"
+#        N_COMPLETE=$N_INCOMPLETE
+#        Z1_DIM=$(((30 - ZS_DIM) / 2))
+#        Z2_DIM=$Z1_DIM
+        NOTE="ablation / sim and diff"
+        ALPHA_SIM_FINAL=$ALPHA_SIM_SMT
+
         python ./run_simulator.py \
         --server $SERVER \
         --gpus $GPUS \
@@ -54,6 +60,7 @@ for RANDOM_STATE in {2021..2050}; do
         --mu_1 $MU_1 \
         --n_complete $N_COMPLETE \
         --n_incomplete $N_INCOMPLETE \
+        --n_validation $N_VALIDATION \
         --n_test $N_TEST \
         --simple $SIMPLE \
         --hidden $HIDDEN \
@@ -65,7 +72,8 @@ for RANDOM_STATE in {2021..2050}; do
         --alpha_kd_clf $ALPHA_KD_CLF \
         --alpha_kd_repr $ALPHA_KD_REPR \
         --random_state $RANDOM_STATE \
-        --note "$NOTE"
+        --note "$NOTE" \
+        --train_level $TRAIN_LEVEL
       done
     done
   done
