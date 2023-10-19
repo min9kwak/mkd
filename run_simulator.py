@@ -140,6 +140,8 @@ def main_worker(local_rank: int, config: argparse.Namespace):
                         'learning_rate': config.learning_rate_smt_student},
         'final': {'epochs': config.epochs_final,
                   'learning_rate': config.learning_rate_final},
+        'final_single': {'epochs': config.epochs_final,
+                         'learning_rate': config.learning_rate_final},
         'multi': {'epochs': config.epochs_multi,
                   'learning_rate': config.learning_rate_multi},
         'multi_student': {'epochs': config.epochs_multi_student,

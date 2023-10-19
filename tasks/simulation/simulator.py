@@ -27,6 +27,7 @@ class Simulator:
         self.networks_smt = None
         self.networks_smt_student = None
         self.networks_final = None
+        self.networks_final_single = None
         self.networks_multi = None
         self.networks_multi_student = None
 
@@ -213,6 +214,38 @@ class Simulator:
                         self.scheduler.step()
             del pg
             self.networks_final = self.networks
+
+            # 2-4. Final Single
+            self._set_train(train_mode='final_single')
+
+            # train
+            with get_rich_pbar(transient=True, auto_refresh=False) as pg:
+                task = pg.add_task(f"[bold red] Training Final Single...")
+                for epoch in range(1, self.train_params['epochs'] + 1):
+                    self.epoch = epoch
+                    train_history = self.train_final(loaders['train_complete'], loaders['train_incomplete'],
+                                                     train=True)
+                    with torch.no_grad():
+                        validation_history = self.train_final(loaders['validation'], None, train=False)
+                        test_history = self.train_final(loaders['test'], None, train=False)
+
+                    epoch_history = self.make_epoch_history(train_history=train_history,
+                                                            validation_history=validation_history,
+                                                            test_history=test_history)
+
+                    if self.config.enable_wandb:
+                        self.log_wandb(epoch_history=epoch_history)
+                    if self.save_log:
+                        self.logs[self.train_mode][epoch] = epoch_history
+                    desc = f"[bold green] Training Final Single... Epoch {self.epoch} / {self.train_params['epochs']}"
+                    pg.update(task, advance=1.0, description=desc)
+                    pg.refresh()
+
+                    # update learning rate
+                    if self.scheduler is not None:
+                        self.scheduler.step()
+            del pg
+            self.networks_final_single = self.networks
 
         # 3. Multi and Multi Student
         if 3 in self.config.train_level:
@@ -924,8 +957,19 @@ class Simulator:
                     params = params + [{'params': self.networks[name].parameters(), 'lr': learning_rate}]
 
         elif train_mode == 'final':
-            # # load smt-student
-            # networks_student['extractor_1_s'].load_state_dict(self.networks_smt_student['extractor_1_s'].state_dict())
+            # load smt-student
+            networks_student['extractor_1_s'].load_state_dict(self.networks_smt_student['extractor_1_s'].state_dict())
+            # # load single (remove the effect)
+            # networks_student['extractor_1_s'].load_state_dict(self.networks_single['extractor_1_s'].state_dict())
+            for k, v in networks_student.items():
+                networks[k] = v
+            self.networks = copy.deepcopy(networks)
+
+            for name in self.networks.keys():
+                if not name.endswith('_s'):
+                    params = params + [{'params': self.networks[name].parameters(), 'lr': learning_rate}]
+
+        elif train_mode == 'final_single':
             # load single (remove the effect)
             networks_student['extractor_1_s'].load_state_dict(self.networks_single['extractor_1_s'].state_dict())
             for k, v in networks_student.items():
@@ -1023,7 +1067,7 @@ class Simulator:
                     self.networks[name].train()
                 else:
                     self.networks[name].eval()
-        elif train_mode == 'final':
+        elif train_mode in ['final', 'final_single']:
             for name in self.networks.keys():
                 if not name.endswith('_s'):
                     if train:
