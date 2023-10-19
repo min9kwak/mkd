@@ -37,7 +37,7 @@ def main():
     setattr(config, 'beta', beta)
     setattr(config, 'gamma', gamma)
 
-    missing_rate = config.n_incomplete / config.n_complete + config.n_incomplete
+    missing_rate = config.n_incomplete / (config.n_complete + config.n_incomplete)
     setattr(config, 'missing_rate', missing_rate)
 
     config.task = 'simulation'

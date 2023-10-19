@@ -924,8 +924,10 @@ class Simulator:
                     params = params + [{'params': self.networks[name].parameters(), 'lr': learning_rate}]
 
         elif train_mode == 'final':
-            # bring extractor_1_s weights from networks_kd to both extractor_1 and extractor_1_s
-            networks_student['extractor_1_s'].load_state_dict(self.networks_smt_student['extractor_1_s'].state_dict())
+            # # load smt-student
+            # networks_student['extractor_1_s'].load_state_dict(self.networks_smt_student['extractor_1_s'].state_dict())
+            # load single (remove the effect)
+            networks_student['extractor_1_s'].load_state_dict(self.networks_single['extractor_1_s'].state_dict())
             for k, v in networks_student.items():
                 networks[k] = v
             self.networks = copy.deepcopy(networks)
