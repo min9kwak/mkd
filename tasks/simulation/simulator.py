@@ -914,7 +914,7 @@ class Simulator:
 
     def create_network_optimizer(self, train_mode, train_params: dict):
 
-        assert train_mode in ['single', 'smt', 'smt_student', 'final', 'multi', 'multi_student']
+        assert train_mode in ['single', 'smt', 'smt_student', 'final', 'final_single', 'multi', 'multi_student']
         epochs = train_params['epochs']
         learning_rate = train_params['learning_rate']
         weight_decay = train_params['weight_decay']
