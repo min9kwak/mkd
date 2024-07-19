@@ -138,6 +138,10 @@ notebooks/
 tasks/simulation/
 configs/simulation.py
 /result.xlsx
+configs/slice/aibl.py
+configs/slice/external_test.py
+configs/slice/finetune_demo.py
+
 learning_curve.png
 param.png
 figure.html
