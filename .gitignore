@@ -141,6 +141,9 @@ configs/simulation.py
 configs/slice/aibl.py
 configs/slice/external_test.py
 configs/slice/finetune_demo.py
+tasks/slice/aibl_cv.py
+tasks/slice/external_test.py
+tasks/slice/finetune_demo.py
 
 learning_curve.png
 param.png
