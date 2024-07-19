@@ -135,6 +135,8 @@ wandb/
 script/
 paper/
 notebooks/
+tasks/simulation/
+configs/simulation.py
 /result.xlsx
 learning_curve.png
 param.png
