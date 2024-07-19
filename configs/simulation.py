@@ -231,6 +231,7 @@ class ConfigSimulation(object):
         parser = argparse.ArgumentParser("Simulation Data", add_help=False)
         parser.add_argument('--hidden', type=int, default=25)
         parser.add_argument('--simple', type=str2bool, default=False)
+        parser.add_argument('--use_mri', type=str2bool, default=False)
         parser.add_argument('--encoder_act', type=handle_none, default='relu')
 
         return parser

@@ -1,5 +1,5 @@
 echo "Experiments Started"
-SERVER=workstation3
+SERVER=main
 GPUS=0
 
 ZS_DIM=10
@@ -34,19 +34,21 @@ ALPHA_KD_REPR=100
 
 TRAIN_LEVEL="1,2,3"
 
+USE_MRI=True
+
 for RANDOM_STATE in {2021..2050}; do
-  for ALPHA_SIM_SMT in 1 2; do
-    for ALPHA_RECON in 10 100; do
-      for ZS_DIM in 6 10 14 18 22; do
-        for N_INCOMPLETE in 250 500 1000; do
+  for ALPHA_SIM_SMT in 2; do
+    for ALPHA_RECON in 100; do
+      for ZS_DIM in 10; do
+        for USE_MRI in True False; do
           ALPHA_SIM_FINAL=$ALPHA_SIM_SMT
   #        NOTE="maintain total dim"
   #        N_COMPLETE=$N_INCOMPLETE
   #        Z1_DIM=$(((30 - ZS_DIM) / 2))
   #        Z2_DIM=$Z1_DIM
   #        NOTE="varying n_incomplete"
-          NOTE="varying gamma"
-
+  #        NOTE="varying gamma"
+          NOTE="use_mri"
           python ./run_simulator.py \
           --server $SERVER \
           --gpus $GPUS \
@@ -75,7 +77,8 @@ for RANDOM_STATE in {2021..2050}; do
           --alpha_kd_repr $ALPHA_KD_REPR \
           --random_state $RANDOM_STATE \
           --note "$NOTE" \
-          --train_level $TRAIN_LEVEL
+          --train_level $TRAIN_LEVEL \
+          --use_mri $USE_MRI
         done
       done
     done

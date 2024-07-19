@@ -134,7 +134,20 @@ checkpoints/
 wandb/
 script/
 paper/
+notebooks/
 /result.xlsx
+learning_curve.png
+param.png
+figure.html
+ablation.csv
+run_aibl_cv.py
+run_external_test.py
+run_finetune_demo.py
+run_imkd_simulation.py
+run_simulator.py
+run_simulator_disc.py
+run_single_depr.py
+run_swap.py
 
 # IDE
 .vscode

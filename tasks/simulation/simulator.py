@@ -423,7 +423,10 @@ class Simulator:
         h2_recon = self.networks['decoder_2'](z2_general + z2)
 
         # classification
-        logit = self.networks['classifier'](z1_general + z2_general)
+        if self.config.use_mri:
+            logit = self.networks['classifier'](z1_general + z2_general + z1)
+        else:
+            logit = self.networks['classifier'](z1_general + z2_general)
 
         # Losses
         # difference
@@ -532,8 +535,11 @@ class Simulator:
 
             z1_general = self.networks['encoder_general'](h1)
             z2_general = self.networks['encoder_general'](h2)
-
-            logit = self.networks['classifier'](z1_general + z2_general)
+            z1 = self.networks['encoder_1'](h1)
+            if self.config.use_mri:
+                logit = self.networks['classifier'](z1_general + z2_general + z1)
+            else:
+                logit = self.networks['classifier'](z1_general + z2_general)
 
         # A2. Student
         h1_s = self.networks['extractor_1_s'](x1)

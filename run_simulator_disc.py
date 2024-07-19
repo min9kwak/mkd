@@ -80,11 +80,14 @@ def main_worker(local_rank: int, config: argparse.Namespace):
                                       xs_dim=config.xs_dim, x1_dim=config.x1_dim, x2_dim=config.x2_dim,
                                       slope=config.slope,
                                       n_complete=config.n_complete, n_incomplete=config.n_incomplete,
-                                      n_test=config.n_test)
+                                      n_validation=config.n_validation, n_test=config.n_test)
 
     train_complete_set = MultiModalDataset(x1=dataset['x1_train_complete'],
                                            x2=dataset['x2_train_complete'],
                                            y=dataset['y_train_complete'])
+    validation_set = MultiModalDataset(x1=dataset['x1_validation'],
+                                       x2=dataset['x2_validation'],
+                                       y=dataset['y_validation'])
     test_set = MultiModalDataset(x1=dataset['x1_test'],
                                  x2=dataset['x2_test'],
                                  y=dataset['y_test'])
@@ -110,6 +113,7 @@ def main_worker(local_rank: int, config: argparse.Namespace):
     datasets = {'train_complete': train_complete_set,
                 'train_incomplete': train_incomplete_set,
                 'train_total': train_total_set,
+                'validation': validation_set,
                 'test': test_set}
 
     # Logging

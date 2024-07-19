@@ -336,6 +336,25 @@ class BrainMulti(BrainBase):
 
 if __name__ == '__main__':
 
+    # check data
+    data = os.path.join('D:/data/ADNI', 'labels/data_info_multi.csv')
+    data = pd.read_csv(data)
+    data = data.rename(columns={'PTGENDER (1=male, 2=female)': 'PTGENDER', 'APOE Status': 'APOE'})
+    data = data.loc[data.IS_FILE]
+
+    with open(os.path.join('D:/data/ADNI', 'labels/mri_abnormal.pkl'), 'rb') as fb:
+        mri_abnormal = pickle.load(fb)
+    data = data.loc[~data.MRI.isin(mri_abnormal)]
+    data['PET'] = data['FBP']
+
+    data = data.loc[data['Conv'].isin([0, 1])].reset_index(drop=True)
+    data['PET_available'] = ~data['PET'].isna()
+
+    len(set(data[(data['Conv'] == 0) & (data['PET_available'])]['RID']))
+    len(set(data[(data['Conv'] == 1)]['RID']))
+
+
+
     from torch.utils.data import DataLoader
     from datasets.slice.transforms import make_pet_transforms
     from datasets.samplers import ImbalancedDatasetSampler, StratifiedSampler
@@ -384,3 +403,34 @@ if __name__ == '__main__':
         print(batch['y'])
         print(batch_mri['y'])
         break
+
+    root = 'D:/data/ADNI'
+    data_file: str = 'labels/data_info_multi.csv'
+    mri_type: str = 'template'
+    pet_type: str = 'FBP'
+
+    data = pd.read_csv(os.path.join(root, data_file), converters={'RID': str, 'Conv': int})
+    data = data.rename(columns={'PTGENDER (1=male, 2=female)': 'PTGENDER', 'APOE Status': 'APOE'})
+
+    data = data.loc[data.IS_FILE]
+    with open(os.path.join(root, 'labels/mri_abnormal.pkl'), 'rb') as fb:
+        mri_abnormal = pickle.load(fb)
+    data = data.loc[~data.MRI.isin(mri_abnormal)]
+    data['PET'] = data[pet_type]
+
+    data = data.loc[data['Conv'].isin([0, 1])].reset_index(drop=True)
+    data['PET_available'] = ~data['PET'].isna()
+
+    data['PET_available'].sum()
+    data['PET_available'].sum()
+    1310 - data['Conv'].sum()
+
+    # 0. preprocess data
+    data = self.preprocess_mc_hippo(data)
+    data = self.preprocess_demo(data)
+
+    u_data = self.preprocess_mc_hippo(u_data)
+    u_data = self.preprocess_demo(u_data)
+
+    if self.mci_only:
+        data = data.loc[data.MCI == 1]
