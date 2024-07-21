@@ -144,6 +144,8 @@ configs/slice/finetune_demo.py
 tasks/slice/aibl_cv.py
 tasks/slice/external_test.py
 tasks/slice/finetune_demo.py
+datasets/depr/
+
 
 learning_curve.png
 param.png
