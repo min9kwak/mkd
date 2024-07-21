@@ -146,7 +146,7 @@ tasks/slice/external_test.py
 tasks/slice/finetune_demo.py
 datasets/depr/
 shell/depr/
-
+txt/
 
 learning_curve.png
 param.png
