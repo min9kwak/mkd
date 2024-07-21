@@ -145,6 +145,7 @@ tasks/slice/aibl_cv.py
 tasks/slice/external_test.py
 tasks/slice/finetune_demo.py
 datasets/depr/
+shell/depr/
 
 
 learning_curve.png
