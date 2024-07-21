@@ -44,7 +44,6 @@ class Multi(object):
         self.local_rank = local_rank
 
         self.add_type = self.config.add_type
-        self.extended = self.config.extended
         self.mixed_precision = config.mixed_precision
         self.enable_wandb = config.enable_wandb
 
@@ -259,15 +258,11 @@ class Multi(object):
         x_pet = torch.concat(batch['pet']).float().to(self.local_rank)
         y = batch['y'].long().repeat(self.config.num_slices).to(self.local_rank)
 
-        if self.extended:
-            h_mri = self.networks['projector_mri'](self.networks['extractor_mri'](x_mri))
-            h_pet = self.networks['projector_pet'](self.networks['extractor_pet'](x_pet))
+        h_mri = self.networks['projector_mri'](self.networks['extractor_mri'](x_mri))
+        h_pet = self.networks['projector_pet'](self.networks['extractor_pet'](x_pet))
 
-            z_mri = self.networks['encoder_mri'](h_mri)
-            z_pet = self.networks['encoder_pet'](h_pet)
-        else:
-            z_mri = self.networks['extractor_mri'](x_mri)
-            z_pet = self.networks['extractor_pet'](x_pet)
+        z_mri = self.networks['encoder_mri'](h_mri)
+        z_pet = self.networks['encoder_pet'](h_pet)
 
         if self.config.multi_mode == 'late':
             logit_mri = self.networks['classifier_mri'](z_mri)

@@ -60,8 +60,6 @@ class SliceSingleConfig(ConfigBase):
         parser.add_argument('--small_kernel', type=str2bool, default=True)
 
         # Extended Network
-        parser.add_argument('--extended', type=str2bool, default=True)
-
         parser.add_argument('--hidden', type=int, default=128)
         parser.add_argument('--encoder_act', type=str, default='sigmoid', choices=('relu', 'lrelu', 'sigmoid'))
         parser.add_argument('--encoder_type', type=str, default='mlp', choices=('linear', 'mlp'))

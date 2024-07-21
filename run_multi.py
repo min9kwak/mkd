@@ -117,13 +117,10 @@ def main_worker(local_rank: int, config: argparse.Namespace):
     datasets = {'train': train_set, 'validation': validation_set, 'test': test_set}
 
     # Networks
-    if config.extended:
-        network_names = ['extractor_mri', 'extractor_pet', 'projector_mri', 'projector_pet',
-                         'encoder_mri', 'encoder_pet', 'classifier']
-        networks = build_networks_general_teacher(config=config)
-        networks = {k: v for k, v in networks.items() if k in network_names and v is not None}
-    else:
-        networks = build_networks_multi(config=config)
+    network_names = ['extractor_mri', 'extractor_pet', 'projector_mri', 'projector_pet',
+                     'encoder_mri', 'encoder_pet', 'classifier']
+    networks = build_networks_general_teacher(config=config)
+    networks = {k: v for k, v in networks.items() if k in network_names and v is not None}
 
     if config.multi_mode == 'late':
         networks['classifier_mri'] = copy.deepcopy(networks['classifier'])
