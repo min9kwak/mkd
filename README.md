@@ -23,41 +23,41 @@ Additionally, we recommend using [wandb](https://wandb.ai/site) to track model t
 ## File Description
 The modified implementations (`modality.py`, `ANTs.py`, and `preprocessor.py`) locate in `modified` directory.
 ```    .[.gitignore](.gitignore)
-    ├── configs/                  # task-specific arguments
-    ├── datasets/                 # pytorch Dataset and transformation functions
-    ├── layers/                   # functions for SMoCo                     
-    ├── models/                   # backbone and head: subnetworks of DenseNet and ResNet
-    ├── tasks/                    # SMoCo, fine-tuning (w/ and w/o demographic information), and external evaluation on AIBL dataset                         
-    ├── utils/                    # various functions for GPU setting, evaluation, optimization, and so on.
-    ├── run_supmoco.py            # the main run code for SMoCo pre-training
-    ├── run_finetune.py           # the main run code for SMoCo fine-tuning
-    ├── run_demo_finetune.py      # the main run code for SMoCo fine-tuning with demographic information
-    ├── run_classification.py     # the main run code for simple classification model
-    └── run_aibl.py               # The main run code for blind evaluation on AIBL dataset
+    ├── configs/                        # task-specific arguments
+    ├── datasets/                       # pytorch Dataset and transformation functions
+    ├── models/                         # backbone and head: subnetworks of DenseNet and ResNet
+    ├── shell/                          # shell scripts for repeating experiments
+    ├── tasks/                          # training teacher, distillation, and enhancing the final model                         
+    ├── utils/                          # various functions for GPU setting, evaluation, optimization, and so on.
+    ├── run_general_teacher.py          # step 1. train teacher
+    ├── run_general_distillation.py     # step 2. knowledge disilltation
+    ├── run_final_multi.py              # step 3. update teacher by student
+    ├── run_single.py                   # baseline for single-modality
+    └── run_multi.py                    # baseline for multi-modalities
 ```
 
 ## Usage
 ### main run codes
-1. Pre-train SMoCo with `run_supmoco.py`.
-2. Fine-tune the pretrained SMoCo with `run_finetune.py` or `run_demo_finetune.py`. Make sure to correctly input the pre-trained checkpoint directory.
-3. Other run codes are implemented for additional evaluations.
+1. Train a teacher model by `run_general_teacher.py`
+2. Conduct knowledge distillation by `run_general_distillation.py`
+3. Update the multi-modal teacher by `run_final_multi.py`
 
 ```
-python run_supmoco.py
-python run_finetune.py --pretrained_dir your_pretrained_dir
+python run_general_teacher.py
+python run_general_distillation.py --teacher_dir your_teacher_dir
+python run_final_multi.py --student_dir your_student_dir
 ```
+
+`run_final_multi.py` automatically tracks the general teacher checkpoint, which was used for student training.
 
 ### Citation
 If you use this project in your research, please cite it as follows:
 ```
-@article{kwak2023self,
-  title={Self-Supervised Contrastive Learning to Predict the Progression of Alzheimer’s Disease with 3D Amyloid-PET},
-  author={Kwak, Min Gu and Su, Yi and Chen, Kewei and Weidman, David and Wu, Teresa and Lure, Fleming and Li, Jing and Alzheimer’s Disease Neuroimaging Initiative},
-  journal={Bioengineering},
-  volume={10},
-  number={10},
-  pages={1141},
+@article{kwak2023mutual,
+  title={A Mutual Knowledge Distillation-Empowered AI Framework for Early Detection of Alzheimer’s Disease Using Incomplete Multi-Modal Images},
+  author={Kwak, Min Gu and Su, Yi and Chen, Kewei and Weidman, David and Wu, Teresa and Lure, Fleming and Li, Jing},
+  journal={medRxiv},
   year={2023},
-  publisher={MDPI}
+  publisher={Cold Spring Harbor Laboratory Preprints}
 }
 ```
