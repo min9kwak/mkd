@@ -13,20 +13,22 @@ class SliceSingleConfig(ConfigBase):
 
         parser = argparse.ArgumentParser("Data", add_help=False)
         parser.add_argument('--data_file', type=str, default='labels/data_info_multi.csv')
-        parser.add_argument('--data_type', type=str, default='mri', choices=('mri', 'pet'))
-        parser.add_argument('--pet_type', type=str, choices=('FDG', 'FBP'), default='FBP')
+        parser.add_argument('--data_type', type=str, default='mri', choices=('mri', 'pet'),
+                            help="if pet, use FBP")
         parser.add_argument('--mci_only', type=str2bool, default=True)
         parser.add_argument('--use_unlabeled', type=str2bool, default=False)
 
         parser.add_argument('--random_state', type=int, default=2023)
         parser.add_argument('--validation_size', type=float, default=0.1)
         parser.add_argument('--test_size', type=float, default=0.1)
-        parser.add_argument('--missing_rate', type=float)
+        parser.add_argument('--missing_rate', type=float, default=-1)
 
         # MRI augmentation
-        parser.add_argument('--mri_type', type=str, default='template', choices=('individual', 'template'))
+        parser.add_argument('--mri_type', type=str, default='template',
+                            choices=('individual', 'template'))
         parser.add_argument('--image_size_mri', type=int, default=72)
-        parser.add_argument('--intensity_mri', type=str, default='scale', choices=('scale', 'normalize', 'simple'))
+        parser.add_argument('--intensity_mri', type=str, default='scale',
+                            choices=('scale', 'normalize', 'simple'))
         parser.add_argument('--crop_size_mri', type=int, default=64)
         parser.add_argument('--rotate_mri', type=str2bool, default=True)
         parser.add_argument('--flip_mri', type=str2bool, default=True)
@@ -102,6 +104,6 @@ class SliceSingleConfig(ConfigBase):
         parser = argparse.ArgumentParser('Single', add_help=False)
         parser.add_argument('--balance', type=str2bool, default=True, help='apply class balance weight')
         parser.add_argument('--sampler_type', type=str, default='stratified', choices=('over', 'stratified'))
-        parser.add_argument('--different_lr', type=str2bool, help='apply class balance weight')
+        parser.add_argument('--different_lr', type=str2bool, default=False, help='apply class balance weight')
 
         return parser

@@ -29,7 +29,7 @@ def main():
     """Main function for single/distributed linear classification."""
 
     config = SliceGeneralTeacher.parse_arguments()
-    config.task = 'GeneralTeacher-' + config.pet_type.upper()
+    config.task = 'GeneralTeacher'
 
     if config.server == 'main':
         setattr(config, 'root', 'D:/data/ADNI')
@@ -96,7 +96,6 @@ def main_worker(local_rank: int, config: argparse.Namespace):
     processor = BrainProcessor(root=config.root,
                                data_file=config.data_file,
                                mri_type=config.mri_type,
-                               pet_type=config.pet_type,
                                mci_only=config.mci_only,
                                use_unlabeled=config.use_unlabeled,
                                random_state=config.random_state)

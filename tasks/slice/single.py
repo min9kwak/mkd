@@ -19,7 +19,7 @@ class Single(object):
     # trainable network in each stage. MRI-only model
     network_names = ['extractor', 'projector', 'encoder', 'classifier']
 
-    def __init__(self, networks: dict, data_type: str):
+    def __init__(self, networks: dict):
 
         self.networks = networks
         self.scaler = None
@@ -27,7 +27,6 @@ class Single(object):
         self.scheduler = None
         self.prepared = False
 
-        assert data_type == 'mri'
         self.networks = {k: v for k, v in self.networks.items() if v is not None}
         self.network_names = list(self.networks.keys())
 

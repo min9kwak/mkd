@@ -17,7 +17,6 @@ class BrainProcessor(object):
                  root: str,
                  data_file: str = 'labels/data_info_multi.csv',
                  mri_type: str = 'template',
-                 pet_type: str = 'FBP',
                  mci_only: bool = False,
                  use_unlabeled: bool = False,
                  use_cdr: bool = True,
@@ -28,9 +27,8 @@ class BrainProcessor(object):
         self.root = root
         self.data_file = data_file
         assert mri_type in ['individual', 'template']
-        assert pet_type in ['FDG', 'FBP']
         self.mri_type = mri_type
-        self.pet_type = pet_type
+        self.pet_type = 'FBP'
         self.mci_only = mci_only
         self.use_unlabeled = use_unlabeled
         self.use_cdr = use_cdr

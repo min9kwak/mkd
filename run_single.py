@@ -14,11 +14,10 @@ import torch.nn as nn
 
 from configs.slice.single import SliceSingleConfig
 from tasks.slice.single import Single
-from tasks.slice.single import Single
 
-from datasets.brain import BrainProcessor, BrainMRI
+from datasets.brain import BrainProcessor, BrainMRI, BrainPET
 from datasets.slice.transforms import make_mri_transforms
-from models.slice.build import build_networks_single, build_networks_general_teacher
+from models.slice.build import build_networks_general_teacher
 
 from utils.logging import get_rich_logger
 from utils.gpu import set_gpu
@@ -28,7 +27,7 @@ def main():
     """Main function for single/distributed linear classification."""
 
     config = SliceSingleConfig.parse_arguments()
-    config.task = 'Single-' + config.data_type.upper() + '-' + config.pet_type.upper()
+    config.task = 'Single-' + config.data_type.upper()
 
     if config.server == 'main':
         setattr(config, 'root', 'D:/data/ADNI')
@@ -93,7 +92,6 @@ def main_worker(local_rank: int, config: argparse.Namespace):
     processor = BrainProcessor(root=config.root,
                                data_file=config.data_file,
                                mri_type=config.mri_type,
-                               pet_type=config.pet_type,
                                mci_only=config.mci_only,
                                random_state=config.random_state)
     datasets_dict = processor.process(validation_size=config.validation_size,
@@ -104,9 +102,17 @@ def main_worker(local_rank: int, config: argparse.Namespace):
         setattr(config, 'missing_rate', -1.0)
     setattr(config, 'current_missing_rate', processor.current_missing_rate)
 
-    train_set = BrainMRI(dataset=datasets_dict['mri_total_train'], mri_transform=train_transform)
-    validation_set = BrainMRI(dataset=datasets_dict['mri_pet_complete_validation'], mri_transform=test_transform)
-    test_set = BrainMRI(dataset=datasets_dict['mri_pet_complete_test'], mri_transform=test_transform)
+    # TODO: BrainMRI and BrainPET: mri_pet_complete_train
+    if config.data_type == 'mri':
+        train_set = BrainMRI(dataset=datasets_dict['mri_total_train'], mri_transform=train_transform)
+        validation_set = BrainMRI(dataset=datasets_dict['mri_pet_complete_validation'], mri_transform=test_transform)
+        test_set = BrainMRI(dataset=datasets_dict['mri_pet_complete_test'], mri_transform=test_transform)
+    elif config.data_type == 'pet':
+        train_set = BrainPET(dataset=datasets_dict['mri_pet_complete_train'], pet_transform=train_transform)
+        validation_set = BrainPET(dataset=datasets_dict['mri_pet_complete_validation'], pet_transform=test_transform)
+        test_set = BrainPET(dataset=datasets_dict['mri_pet_complete_test'], pet_transform=test_transform)
+    else:
+        raise ValueError
 
     datasets = {'train': train_set, 'validation': validation_set, 'test': test_set}
 
@@ -121,7 +127,12 @@ def main_worker(local_rank: int, config: argparse.Namespace):
     # Cross Entropy Loss Function
     class_weight = None
     if config.balance:
-        class_weight = torch.tensor(processor.class_weight_mri, dtype=torch.float).to(local_rank)
+        if config.data_type == 'mri':
+            class_weight = torch.tensor(processor.class_weight_mri, dtype=torch.float).to(local_rank)
+        elif config.data_type == 'pet':
+            class_weight = torch.tensor(processor.class_weight_pet, dtype=torch.float).to(local_rank)
+        else:
+            raise ValueError
     loss_function_ce = nn.CrossEntropyLoss(weight=class_weight, reduction='mean')
 
     # Logging
@@ -130,7 +141,7 @@ def main_worker(local_rank: int, config: argparse.Namespace):
     if config.enable_wandb:
         wandb.init(
             name=f'{config.task} : {config.hash}',
-            project='incomplete-kd-mri',
+            project=f'incomplete-kd-{config.data_type}',
             config=config.__dict__,
             settings=wandb.Settings(code_dir=".")
         )
@@ -139,7 +150,7 @@ def main_worker(local_rank: int, config: argparse.Namespace):
         config.save()
 
     # Model (Task)
-    model = Single(networks=networks, data_type=config.data_type)
+    model = Single(networks=networks)
     model.prepare(config=config,
                   loss_function_ce=loss_function_ce,
                   local_rank=local_rank)

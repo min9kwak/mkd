@@ -148,6 +148,7 @@ datasets/depr/
 shell/depr/
 txt/
 
+shell/run_simulator.sh
 learning_curve.png
 param.png
 figure.html
