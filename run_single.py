@@ -76,7 +76,7 @@ def main_worker(local_rank: int, config: argparse.Namespace):
     else:
         raise ValueError
 
-    assert config.data_type == 'mri'
+    assert config.data_type in ['mri', 'pet']
     train_transform, test_transform = make_mri_transforms(
         image_size_mri=config.image_size_mri, intensity_mri=config.intensity_mri, crop_size_mri=config.crop_size_mri,
         rotate_mri=config.rotate_mri, flip_mri=config.flip_mri, affine_mri=config.affine_mri,

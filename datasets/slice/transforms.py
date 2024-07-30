@@ -3,9 +3,8 @@ import numpy as np
 
 import torch
 from monai.transforms import (
-    Compose, AddChannel, RandRotate, RandRotate90, Resize, ScaleIntensity, ToTensor, RandFlip, RandZoom, RandAffine,
+    Compose, RandRotate, RandRotate90, Resize, ScaleIntensity, ToTensor, RandFlip, RandZoom, RandAffine,
     RandSpatialCrop, NormalizeIntensity, RandGaussianNoise, Transform, CenterSpatialCrop,
-    AddChannel
 )
 from torchvision.transforms import ConvertImageDtype, Normalize
 from monai.utils.enums import TransformBackends
@@ -18,6 +17,16 @@ class Divide(Transform):
 
     def __call__(self, img, *args, **kwargs):
         return img / 255.0
+
+
+class AddChannel(Transform):
+    backend = [TransformBackends.TORCH]
+
+    def __init__(self):
+        pass
+
+    def __call__(self, img: torch.Tensor):
+        return img.unsqueeze(dim=0)
 
 
 class RandomSlices(Transform):

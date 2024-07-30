@@ -50,6 +50,7 @@ class Single(object):
 
         self.mixed_precision = config.mixed_precision
         self.enable_wandb = config.enable_wandb
+        self.data_type = config.data_type
 
         if self.config.train_slices == 'random':
             self.test_num_slices = 3
@@ -261,7 +262,7 @@ class Single(object):
     def train_step(self, batch):
 
         # input data
-        x_mri = torch.concat(batch['mri']).float().to(self.local_rank)
+        x_mri = torch.concat(batch[self.data_type]).float().to(self.local_rank)
         y = batch['y'].long().repeat(self.config.num_slices).to(self.local_rank)
 
         h_mri = self.networks['projector'](self.networks['extractor'](x_mri))

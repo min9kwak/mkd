@@ -218,7 +218,7 @@ class BrainProcessor(object):
         # 3. Others
         cols = ['MMSCORE', 'CDGLOBAL', 'SUM BOXES']
         cols = [c for c in cols if c in self.demo_columns]
-        records = data_demo.groupby('Conv').mean()[cols].to_dict()
+        records = data_demo.groupby('Conv')[cols].mean().to_dict()
 
         data_demo_ = data_demo.copy()
         for col in cols:
@@ -334,24 +334,6 @@ class BrainMulti(BrainBase):
 
 if __name__ == '__main__':
 
-    # check data
-    data = os.path.join('D:/data/ADNI', 'labels/data_info_multi.csv')
-    data = pd.read_csv(data)
-    data = data.rename(columns={'PTGENDER (1=male, 2=female)': 'PTGENDER', 'APOE Status': 'APOE'})
-    data = data.loc[data.IS_FILE]
-
-    with open(os.path.join('D:/data/ADNI', 'labels/mri_abnormal.pkl'), 'rb') as fb:
-        mri_abnormal = pickle.load(fb)
-    data = data.loc[~data.MRI.isin(mri_abnormal)]
-    data['PET'] = data['FBP']
-
-    data = data.loc[data['Conv'].isin([0, 1])].reset_index(drop=True)
-    data['PET_available'] = ~data['PET'].isna()
-
-    len(set(data[(data['Conv'] == 0) & (data['PET_available'])]['RID']))
-    len(set(data[(data['Conv'] == 1)]['RID']))
-
-
 
     from torch.utils.data import DataLoader
     from datasets.slice.transforms import make_pet_transforms
@@ -375,60 +357,9 @@ if __name__ == '__main__':
         flip_pet=True, affine_pet=False, blur_std_pet=None, train_slices='fixed',
         num_slices=5, slice_range=0.15, space=3, n_points=5, prob=0.5)
 
-    # datasets_train = {}
-    # for key, value in datasets['mri_pet_complete_train'].items():
-    #     if isinstance(value, list):
-    #         datasets_train[key] = datasets['mri_pet_complete_train'][key] + datasets['mri_incomplete_train'][key]
-    #     else:
-    #         datasets_train[key] = np.concatenate(
-    #             [datasets['mri_pet_complete_train'][key], datasets['mri_incomplete_train'][key]]
-    #         )
+    dset = BrainPET(dataset=datasets['mri_incomplete_train'], pet_transform=train_transform_pet)
+    train_sampler = StratifiedSampler(class_vector=dset.y, batch_size=16)
+    train_loader = DataLoader(dset, batch_size=16, sampler=train_sampler)
 
-    train_set = BrainMulti(dataset=datasets['mri_pet_complete_train'],
-                           mri_transform=train_transform_pet,
-                           pet_transform=train_transform_pet)
-    train_mri_set = BrainMRI(dataset=datasets['mri_incomplete_train'],
-                             mri_transform=train_transform_pet)
-
-    train_sampler = StratifiedSampler(class_vector=train_set.y, batch_size=16)
-    train_loader = DataLoader(train_set, batch_size=16, sampler=train_sampler)
-
-    train_mri_sampler = StratifiedSampler(class_vector=train_mri_set.y, batch_size=16)
-    train_mri_loader = DataLoader(train_mri_set, batch_size=16, sampler=train_mri_sampler)
-
-    for i, (batch, batch_mri) in enumerate(zip(train_loader, train_mri_loader)):
-        print(i)
-        print(batch['y'])
-        print(batch_mri['y'])
+    for i, batch in enumerate(train_loader):
         break
-
-    root = 'D:/data/ADNI'
-    data_file: str = 'labels/data_info_multi.csv'
-    mri_type: str = 'template'
-    pet_type: str = 'FBP'
-
-    data = pd.read_csv(os.path.join(root, data_file), converters={'RID': str, 'Conv': int})
-    data = data.rename(columns={'PTGENDER (1=male, 2=female)': 'PTGENDER', 'APOE Status': 'APOE'})
-
-    data = data.loc[data.IS_FILE]
-    with open(os.path.join(root, 'labels/mri_abnormal.pkl'), 'rb') as fb:
-        mri_abnormal = pickle.load(fb)
-    data = data.loc[~data.MRI.isin(mri_abnormal)]
-    data['PET'] = data[pet_type]
-
-    data = data.loc[data['Conv'].isin([0, 1])].reset_index(drop=True)
-    data['PET_available'] = ~data['PET'].isna()
-
-    data['PET_available'].sum()
-    data['PET_available'].sum()
-    1310 - data['Conv'].sum()
-
-    # 0. preprocess data
-    data = self.preprocess_mc_hippo(data)
-    data = self.preprocess_demo(data)
-
-    u_data = self.preprocess_mc_hippo(u_data)
-    u_data = self.preprocess_demo(u_data)
-
-    if self.mci_only:
-        data = data.loc[data.MCI == 1]
