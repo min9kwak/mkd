@@ -135,8 +135,8 @@ wandb/
 script/
 paper/
 notebooks/
-tasks/simulation/
-configs/simulation.py
+#tasks/simulation/
+#configs/simulation.py
 /result.xlsx
 configs/slice/aibl.py
 configs/slice/external_test.py
@@ -148,7 +148,7 @@ datasets/depr/
 shell/depr/
 txt/
 
-shell/run_simulator.sh
+#shell/run_simulator.sh
 learning_curve.png
 param.png
 figure.html
@@ -157,7 +157,7 @@ run_aibl_cv.py
 run_external_test.py
 run_finetune_demo.py
 run_imkd_simulation.py
-run_simulator.py
+#run_simulator.py
 run_simulator_disc.py
 run_single_depr.py
 run_swap.py
