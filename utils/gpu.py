@@ -1,8 +1,8 @@
 import os
 
 
-def set_gpu(server, gpus):
-    gpus = ','.join([str(gpu) for gpu in gpus])
+def set_gpu(config):
+    gpus = ','.join([str(gpu) for gpu in config.gpus])
     os.environ['CUDA_VISIBLE_DEVICES'] = gpus
 
 
