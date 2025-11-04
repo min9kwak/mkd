@@ -15,6 +15,11 @@ from datasets.samplers import ImbalancedDatasetSampler, StratifiedSampler
 
 
 class Multi(object):
+    """Multi-modal baseline model (MRI+PET).
+    
+    Trains a standard multi-modal classification model without knowledge distillation.
+    Used as a baseline to compare against the SMT framework.
+    """
 
     def __init__(self,
                  networks: dict):
@@ -30,8 +35,9 @@ class Multi(object):
                 loss_function_ce,
                 local_rank: int = 0,
                 **kwargs):
+        """Prepare model for training with classification loss only."""
 
-        # Set attributes
+        # Store configuration and training settings
         self.config = config
 
         self.loss_function_ce = loss_function_ce

@@ -23,16 +23,19 @@ from utils.gpu import set_gpu
 
 
 def main():
-    """Main function for single/distributed linear classification."""
+    """Main function for training multi-modal baseline (MRI+PET without MKD)."""
 
+    # Parse configuration arguments
     config = SliceMultiConfig.parse_arguments()
     config.task = 'Multi'
 
+    # Set data root path based on server configuration
     if config.server == 'main':
         setattr(config, 'root', 'D:/data/ADNI')
     else:
         setattr(config, 'root', '/raidWorkspace/mingu/Data/ADNI')
 
+    # Configure GPU settings and distributed training
     set_gpu(config)
     num_gpus_per_node = len(config.gpus)
     world_size = config.num_nodes * num_gpus_per_node
@@ -41,9 +44,11 @@ def main():
     setattr(config, 'world_size', world_size)
     setattr(config, 'distributed', distributed)
 
+    # Set random seeds for reproducibility
     np.random.seed(config.random_state)
     torch.manual_seed(config.random_state)
 
+    # Configure CUDNN for faster training
     torch.backends.cudnn.benchmark = True
     torch.backends.cudnn.deterministic = False
 
@@ -55,16 +60,18 @@ def main():
 
 
 def main_worker(local_rank: int, config: argparse.Namespace):
-    """Single process."""
+    """Single process worker for training multi-modal baseline model."""
 
+    # Set device for current process
     torch.cuda.set_device(local_rank)
     if config.distributed:
         raise NotImplementedError
 
+    # Adjust batch size and workers for distributed setting
     config.batch_size = config.batch_size // config.world_size
     config.num_workers = config.num_workers // config.num_gpus_per_node
 
-    # Transform
+    # Determine number of slices based on training strategy
     if config.train_slices == 'random':
         pass
     elif config.train_slices == 'fixed':
@@ -75,6 +82,7 @@ def main_worker(local_rank: int, config: argparse.Namespace):
     else:
         raise ValueError
 
+    # Create data augmentation transforms for both MRI and PET
     train_transform_mri, test_transform_mri = make_mri_transforms(
         image_size_mri=config.image_size_mri, intensity_mri=config.intensity_mri, crop_size_mri=config.crop_size_mri,
         rotate_mri=config.rotate_mri, flip_mri=config.flip_mri, affine_mri=config.affine_mri,

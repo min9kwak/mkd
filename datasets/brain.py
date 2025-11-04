@@ -13,6 +13,21 @@ from sklearn.preprocessing import MinMaxScaler
 
 
 class BrainProcessor(object):
+    """Brain dataset processor for multi-modal AD diagnosis.
+    
+    Handles data loading, preprocessing, and splitting for incomplete multi-modal scenarios.
+    Supports both complete (MRI+PET) and incomplete (MRI-only) cases.
+    
+    Args:
+        root: Root directory containing image data and labels
+        data_file: Path to CSV file with metadata
+        mri_type: MRI preprocessing type ('individual' or 'template')
+        mci_only: If True, use only MCI subjects
+        use_unlabeled: If True, include unlabeled data for training
+        use_cdr: If True, include CDR score in demographics
+        scale_demo: If True, scale demographic features with MinMaxScaler
+        random_state: Random seed for reproducibility
+    """
     def __init__(self,
                  root: str,
                  data_file: str = 'labels/data_info_multi.csv',
@@ -252,6 +267,10 @@ class BrainProcessor(object):
 
 
 class BrainBase(Dataset):
+    """Base dataset class for brain imaging data.
+    
+    Stores MRI, PET, demographic features, and labels.
+    """
 
     def __init__(self, dataset: dict, **kwargs):
         self.mri = dataset['mri']
@@ -278,6 +297,10 @@ class BrainBase(Dataset):
 
 
 class BrainMRI(BrainBase):
+    """Dataset for MRI-only samples (incomplete modality).
+    
+    Used for training student models or single-modality baselines.
+    """
 
     def __init__(self, dataset, mri_transform):
         super().__init__(dataset)
@@ -295,6 +318,10 @@ class BrainMRI(BrainBase):
 
 
 class BrainPET(BrainBase):
+    """Dataset for PET-only samples.
+    
+    Used for single-modality baselines.
+    """
 
     def __init__(self, dataset, pet_transform):
         super().__init__(dataset)
@@ -312,6 +339,11 @@ class BrainPET(BrainBase):
 
 
 class BrainMulti(BrainBase):
+    """Dataset for multi-modal samples (MRI + PET).
+    
+    Used for training teacher models and evaluating all models.
+    Contains complete paired imaging data.
+    """
 
     def __init__(self, dataset, mri_transform, pet_transform):
         super().__init__(dataset)

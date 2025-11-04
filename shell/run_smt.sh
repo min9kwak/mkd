@@ -58,7 +58,7 @@ do
       do
         for SAMPLER_TYPE in stratified
         do
-          python ./run_general_teacher.py \
+          python ./run_smt.py \
           --gpus $GPUS \
           --server $SERVER \
           --pet_type $PET_TYPE \

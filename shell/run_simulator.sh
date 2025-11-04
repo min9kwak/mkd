@@ -13,6 +13,8 @@ XS_DIM=20
 X1_DIM=20
 X2_DIM=20
 
+TEMPERATURE=0.5
+
 MU_0=0.0
 MU_1=0.5
 
@@ -35,16 +37,17 @@ ALPHA_KD_REPR=10
 
 TRAIN_LEVEL="1,2"
 
-for RANDOM_STATE in {2021..2050}; do
-  for ALPHA_RECON in 1 10 50 100 200; do
-    for ALPHA_KD_CLF in 1 10 50 100 200; do
-      for ALPHA_KD_REPR in 1 2 4 5 10; do
+for RANDOM_STATE in {2021..2030}; do
+  for ALPHA_RECON in 100; do
+    for ALPHA_KD_CLF in 100; do
+      for ALPHA_KD_REPR in 5; do
         ALPHA_SIM_FINAL=$ALPHA_SIM_SMT
         NOTE="hyperparameter"
 
         python ./run_simulator.py \
         --server $SERVER \
         --gpus $GPUS \
+        --temperature $TEMPERATURE \
         --zs_dim $ZS_DIM \
         --z1_dim $Z1_DIM \
         --z2_dim $Z2_DIM \
