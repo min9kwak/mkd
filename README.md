@@ -261,7 +261,7 @@ If you use this project in your research, please cite:
 
 ```bibtex
 @article{kwak2025cross,
-  title={An Incomplete Cross-modal Mutual Knowledge Distillation Framework for Alzheimer's Disease Diagnosis: Addressing Incomplete Modalities},
+  title={A Cross-Modal Mutual Knowledge Distillation Framework for Alzheimer’s Disease Diagnosis: Addressing Incomplete Modalities},
   author={Kwak, Min Gu and Mao, Lingchao and Zheng, Zhiyang and Su, Yi and Lure, Fleming and Li, Jing},
   journal={IEEE Transactions on Automation Science and Engineering},
   year={2025},
