@@ -16,14 +16,14 @@ ALPHA_CE=1.0
 ALPHA_KD_CLF=100.0
 ALPHA_KD_REPR=0.0
 
-TEACHER_PRE="checkpoints/SMT-FBP/"  # Update to your SMT checkpoint directory
+TEACHER_PRE="checkpoints/MDT-FBP/"  # Update to your MDT checkpoint directory
 TEACHER_POSITION=last
 
 USE_TEACHER=True
 USE_SPECIFIC=False
 INHERIT_CLASSIFIER=True
 
-# Example hashes - replace with your actual SMT checkpoint timestamps
+# Example hashes - replace with your actual MDT checkpoint timestamps
 for HASH in "2023-06-03_04-19-11"
 do
   for LEARNING_RATE in 0.0001
@@ -35,7 +35,7 @@ do
         for TEMPERATURE in 5.0
         do
           TEACHER_DIR="${TEACHER_PRE}${HASH}"
-          python ./run_smt_student.py \
+          python ./run_mdt_student.py \
           --gpus $GPUS \
           --server $SERVER \
           --epochs $EPOCHS \

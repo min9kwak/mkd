@@ -2,6 +2,7 @@
 
 import os
 import sys
+import json
 import time
 import rich
 import numpy as np
@@ -10,8 +11,8 @@ import wandb
 import torch
 import torch.nn as nn
 
-from configs.slice.smt import SMTConfig
-from tasks.slice.smt import SMT
+from configs.slice.mdt_plus import MDTPlusConfig
+from tasks.slice.mdt_plus import MDTPlus
 
 from datasets.brain import BrainProcessor, BrainMulti
 from datasets.slice.transforms import make_mri_transforms, make_pet_transforms
@@ -23,22 +24,46 @@ from utils.logging import get_rich_logger
 from utils.gpu import set_gpu
 
 import argparse
+from copy import deepcopy
 
 
 def main():
-    """Main function for training SMT (Student-oriented Multi-modal Teacher)."""
+    """Main function for training MDT⁺ (enhanced teacher via mutual transfer)."""
 
     # Parse configuration arguments
-    config = SMTConfig.parse_arguments()
-    config.task = 'SMT'
+    config = MDTPlusConfig.parse_arguments()
 
-    # Set data root path based on server configuration
+    # Load student model checkpoint path
+    student_file = os.path.join(config.student_dir, f"ckpt.{config.student_position}.pth.tar")
+    setattr(config, 'student_file', student_file)
+
+    # Load student's configuration to inherit hyperparameters
+    student_config = os.path.join(config.student_dir, "configs.json")
+    with open(student_config, 'rb') as fb:
+        student_config = json.load(fb)
+
+    # Inherit pretrained student configs and mark conflicting keys with '_s' suffix
+    for key in student_config.keys():
+        if key not in config.__dict__.keys():
+            # property cannot be done
+            try:
+                setattr(config, key, student_config[key])
+            except:
+                pass
+        else:
+            try:
+                setattr(config, f'{key}_s', student_config[key])
+            except:
+                pass
+    setattr(config, 'hash_s', student_config['hash'])
+
+    config.task = 'MDT+'
+
     if config.server == 'main':
         setattr(config, 'root', 'D:/data/ADNI')
     else:
         setattr(config, 'root', '/raidWorkspace/mingu/Data/ADNI')
 
-    # Configure GPU settings and distributed training
     set_gpu(config)
     num_gpus_per_node = len(config.gpus)
     world_size = config.num_nodes * num_gpus_per_node
@@ -47,11 +72,9 @@ def main():
     setattr(config, 'world_size', world_size)
     setattr(config, 'distributed', distributed)
 
-    # Set random seeds for reproducibility
     np.random.seed(config.random_state)
     torch.manual_seed(config.random_state)
 
-    # Configure CUDNN for faster training
     torch.backends.cudnn.benchmark = True
     torch.backends.cudnn.deterministic = False
 
@@ -65,16 +88,14 @@ def main():
 def main_worker(local_rank: int, config: argparse.Namespace):
     """Single process."""
 
-    # Set device for current process
     torch.cuda.set_device(local_rank)
     if config.distributed:
         raise NotImplementedError
 
-    # Adjust batch size and workers for distributed setting
     config.batch_size = config.batch_size // config.world_size
     config.num_workers = config.num_workers // config.num_gpus_per_node
 
-    # Determine number of slices based on training strategy
+    # Transform
     if config.train_slices == 'random':
         pass
     elif config.train_slices == 'fixed':
@@ -85,7 +106,7 @@ def main_worker(local_rank: int, config: argparse.Namespace):
     else:
         raise ValueError
 
-    # Create data augmentation transforms for MRI and PET
+    # TODO: unlabeled data
     train_transform_mri, test_transform_mri = make_mri_transforms(
         image_size_mri=config.image_size_mri, intensity_mri=config.intensity_mri, crop_size_mri=config.crop_size_mri,
         rotate_mri=config.rotate_mri, flip_mri=config.flip_mri, affine_mri=config.affine_mri,
@@ -97,11 +118,10 @@ def main_worker(local_rank: int, config: argparse.Namespace):
         blur_std_pet=config.blur_std_pet, train_slices=config.train_slices, num_slices=config.num_slices,
         slice_range=config.slice_range, space=config.space, n_points=config.n_points, prob=config.prob)
 
-    # Process and load dataset with optional PET missing rate simulation
+    # Dataset
     if config.missing_rate == -1.0:
         setattr(config, 'missing_rate', None)
 
-    # Initialize data processor for ADNI brain imaging dataset
     processor = BrainProcessor(root=config.root,
                                data_file=config.data_file,
                                mri_type=config.mri_type,
@@ -116,7 +136,6 @@ def main_worker(local_rank: int, config: argparse.Namespace):
         setattr(config, 'missing_rate', -1.0)
     setattr(config, 'current_missing_rate', processor.current_missing_rate)
 
-    # Create datasets for multi-modal training (complete MRI+PET pairs only)
     train_set = BrainMulti(dataset=datasets_dict['mri_pet_complete_train'],
                            mri_transform=train_transform_mri,
                            pet_transform=train_transform_pet)
@@ -129,16 +148,35 @@ def main_worker(local_rank: int, config: argparse.Namespace):
 
     datasets = {'train': train_set, 'validation': validation_set, 'test': test_set}
 
-    # Build neural network modules (extractors, projectors, encoders, decoders, classifier)
+    # Build multi-modal teacher networks
     networks = build_networks_general_teacher(config=config)
 
-    # Initialize logger for training progress
+    # Define which networks to load from teacher and which from student
+    teacher_network_names = ['extractor_pet', 'projector_pet', 'extractor_mri', 'projector_mri',
+                             'encoder_general', 'encoder_pet', 'encoder_mri',
+                             'classifier']
+    student_network_names = ['extractor_mri', 'projector_mri']
+
+    # Load teacher weights from original MDT checkpoint (optional)
+    if config.use_teacher:
+        for name in teacher_network_names:
+            networks[name].load_weights_from_checkpoint(path=config.teacher_file, key=name)
+
+    # Load student's enriched MRI extractor/projector for mutual knowledge transfer
+    for name in student_network_names:
+        network = deepcopy(networks[name])
+        if config.use_student:
+            network.load_weights_from_checkpoint(path=config.student_file, key=name + '_s')
+        networks[name + '_s'] = network
+        del network
+
+    # Logging
     logfile = os.path.join(config.checkpoint_dir, 'main.log')
     logger = get_rich_logger(logfile=logfile)
     if config.enable_wandb:
         wandb.init(
             name=f'{config.task} : {config.hash}',
-            project='incomplete-kd-teacher',
+            project='incomplete-final-multi',
             config=config.__dict__,
             settings=wandb.Settings(code_dir=".")
         )
@@ -146,14 +184,14 @@ def main_worker(local_rank: int, config: argparse.Namespace):
         rich.print(config.__dict__)
         config.save()
 
-    # Configure loss functions for multi-modal teacher training
-    # Cross Entropy loss for classification with optional class balancing
+    # Loss Function
+    # Cross Entropy
     class_weight = None
     if config.balance:
         class_weight = torch.tensor(processor.class_weight_pet, dtype=torch.float).to(local_rank)
     loss_function_ce = nn.CrossEntropyLoss(weight=class_weight, reduction='sum', ignore_index=-1)
 
-    # Similarity loss: encourages common representations across modalities
+    # Similarity, Difference, and Reconstruction
     if config.loss_sim == 'cmd':
         loss_function_sim = SimCMDLoss(n_moments=config.n_moments)
     elif config.loss_sim == 'cosine':
@@ -165,7 +203,6 @@ def main_worker(local_rank: int, config: argparse.Namespace):
     else:
         raise ValueError
 
-    # Difference loss: separates modality-specific representations
     if config.loss_diff == 'cosine':
         loss_function_diff = DiffCosineLoss()
     elif config.loss_diff == 'fro':
@@ -175,11 +212,10 @@ def main_worker(local_rank: int, config: argparse.Namespace):
     else:
         raise ValueError
 
-    # Reconstruction loss: ensures information preservation
     loss_function_recon = nn.MSELoss(reduction='mean')
 
-    # Initialize SMT model with all loss functions
-    model = SMT(networks=networks)
+    # Model (Task)
+    model = MDTPlus(networks=networks)
     model.prepare(config=config,
                   loss_function_ce=loss_function_ce,
                   loss_function_sim=loss_function_sim,
@@ -188,7 +224,7 @@ def main_worker(local_rank: int, config: argparse.Namespace):
                   swap=config.swap,
                   local_rank=local_rank)
 
-    # Start training and evaluation loop
+    # Train & evaluate
     start = time.time()
     model.run(
         datasets=datasets,
@@ -197,7 +233,6 @@ def main_worker(local_rank: int, config: argparse.Namespace):
     )
     elapsed_sec = time.time() - start
 
-    # Log total training time
     if logger is not None:
         elapsed_mins = elapsed_sec / 60
         logger.info(f'Total training time: {elapsed_mins:,.2f} minutes.')

@@ -2,15 +2,15 @@ import argparse
 from configs.base import ConfigBase, str2bool
 
 
-class SMTConfig(ConfigBase):
-    """Configuration for Student-oriented Multi-modal Teacher (SMT) model.
+class MDTConfig(ConfigBase):
+    """Configuration for Modality-Disentangling Teacher (MDT) model.
     
-    SMT learns to extract common representations from paired MRI+PET data
+    MDT learns to extract common representations from paired MRI+PET data
     through modality disentanglement using similarity, difference, and reconstruction losses.
     """
 
     def __init__(self, args=None, **kwargs):
-        super(SMTConfig, self).__init__(args, **kwargs)
+        super(MDTConfig, self).__init__(args, **kwargs)
 
     @staticmethod
     def data_parser() -> argparse.ArgumentParser:

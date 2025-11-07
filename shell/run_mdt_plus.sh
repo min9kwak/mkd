@@ -15,14 +15,14 @@ TEMPERATURE=5.0
 ALPHA_CE=1.0
 ALPHA_KD_REPR=500.0
 
-STUDENT_PRE="checkpoints/SMT-Student-FBP/"  # Update to your SMT-Student checkpoint directory
+STUDENT_PRE="checkpoints/MDT-Student-FBP/"  # Update to your MDT-Student checkpoint directory
 STUDENT_POSITION=last
 
 USE_SPECIFIC_FINAL=True
 USE_TEACHER=False
 USE_STUDENT=True
 
-# Example hashes - replace with your actual SMT-Student checkpoint timestamps
+# Example hashes - replace with your actual MDT-Student checkpoint timestamps
 for HASH in "2023-06-18_09-50-44" "2023-06-18_06-20-15" "2023-06-18_02-19-54" "2023-06-17_22-36-08" "2023-06-21_04-19-50"
 do
   for LEARNING_RATE in 0.001
@@ -34,7 +34,7 @@ do
         for TEMPERATURE in 5.0
         do
           STUDENT_DIR="${STUDENT_PRE}${HASH}"
-          python ./run_smt_plus.py \
+          python ./run_mdt_plus.py \
           --gpus $GPUS \
           --server $SERVER \
           --epochs $EPOCHS \

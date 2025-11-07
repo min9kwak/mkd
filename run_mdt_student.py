@@ -11,8 +11,8 @@ import wandb
 import torch
 import torch.nn as nn
 
-from configs.slice.smt_student import SMTStudentConfig
-from tasks.slice.smt_student import SMTStudent
+from configs.slice.mdt_student import MDTStudentConfig
+from tasks.slice.mdt_student import MDTStudent
 
 from datasets.brain import BrainProcessor, BrainMulti, BrainMRI
 from datasets.slice.transforms import make_mri_transforms, make_pet_transforms
@@ -28,10 +28,10 @@ from copy import deepcopy
 
 
 def main():
-    """Main function for training SMT-Student via knowledge distillation."""
+    """Main function for training MDT-Student via knowledge distillation."""
 
     # Parse configuration arguments
-    config = SMTStudentConfig.parse_arguments()
+    config = MDTStudentConfig.parse_arguments()
 
     # Load teacher model checkpoint path
     teacher_file = os.path.join(config.teacher_dir, f"ckpt.{config.teacher_position}.pth.tar")
@@ -57,7 +57,7 @@ def main():
                 pass
     setattr(config, 'hash_t', teacher_config['hash'])
 
-    config.task = 'SMT-Student'
+    config.task = 'MDT-Student'
 
     if config.server == 'main':
         setattr(config, 'root', 'D:/data/ADNI')
@@ -203,7 +203,7 @@ def main_worker(local_rank: int, config: argparse.Namespace):
     loss_function_ce = nn.CrossEntropyLoss(weight=class_weight, reduction='sum', ignore_index=-1)
 
     # Model (Task)
-    model = SMTStudent(networks=networks)
+    model = MDTStudent(networks=networks)
     model.prepare(config=config,
                   loss_function_ce=loss_function_ce,
                   local_rank=local_rank)

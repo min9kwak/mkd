@@ -2,16 +2,16 @@ import argparse
 from configs.base import ConfigBase, str2bool
 
 
-class SMTStudentConfig(ConfigBase):
-    """Configuration for SMT-Student model.
+class MDTStudentConfig(ConfigBase):
+    """Configuration for MDT-Student model.
     
-    SMT-Student learns from the SMT teacher using only MRI scans,
+    MDT-Student learns from the MDT teacher using only MRI scans,
     enabling diagnosis for patients without PET imaging.
     Trained with both complete (MRI+PET) and incomplete (MRI-only) samples.
     """
 
     def __init__(self, args=None, **kwargs):
-        super(SMTStudentConfig, self).__init__(args, **kwargs)
+        super(MDTStudentConfig, self).__init__(args, **kwargs)
 
     @staticmethod
     def data_parser() -> argparse.ArgumentParser:

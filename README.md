@@ -15,12 +15,16 @@ Alzheimer's Disease (AD) detection benefits significantly from multi-modal imagi
 
 **The Challenge**: Many patients have MRI scans but lack PET scans, creating an **incomplete multi-modal data problem**.
 
-**Our Solution**: We propose a **Cross-Modal Mutual Knowledge Distillation (MKD)** framework that:
+**Our Solution**: We propose an **Incomplete Cross-modal Mutual Knowledge Distillation (IC-MKD)** framework that:
 1. Trains a multi-modal teacher model to extract common representations from MRI+PET data
 2. Distills this knowledge to a student model that uses only MRI
 3. Transfers the student's richer MRI information back to enhance the teacher model
 
 This mutual learning approach enables effective AD diagnosis even when PET scans are unavailable.
+
+<p align="center">
+  <img src="assets/image/ic-mkd.png" width="80%" alt="IC-MKD Framework">
+</p>
 
 ---
 
@@ -28,7 +32,7 @@ This mutual learning approach enables effective AD diagnosis even when PET scans
 
 Our framework consists of three key training stages:
 
-### Stage 1: Student-oriented Multi-modal Teacher (SMT)
+### Stage 1: Modality-Disentangling Teacher (MDT)
 - **Input**: Paired MRI + PET scans (complete multi-modal data)
 - **Architecture**: Dual-branch network with modality-specific extractors and shared encoder
 - **Goal**: Learn to disentangle common and modality-specific representations through:
@@ -37,20 +41,20 @@ Our framework consists of three key training stages:
   - Reconstruction loss: Ensures information preservation
   - Classification loss: Maintains diagnostic accuracy
 
-**Key Innovation**: The teacher is designed to be student-oriented, extracting representations that are learnable from MRI alone.
+**Key Innovation**: The teacher is designed to disentangle modalities, extracting representations that are learnable from MRI alone.
 
-### Stage 2: Knowledge Distillation to MRI-only Student (SMT-Student)
+### Stage 2: Knowledge Distillation to MRI-only Student (MDT-Student)
 - **Input**: MRI-only scans (both complete and incomplete cases)
-- **Teacher**: Frozen SMT model from Stage 1
+- **Teacher**: Frozen MDT model from Stage 1
 - **Goal**: Train student model to mimic teacher's common representations using only MRI
 - **Advantage**: Student has access to more training samples (patients with MRI but no PET)
 
-### Stage 3: Mutual Transfer to Enhanced Teacher (SMT⁺)
+### Stage 3: Mutual Transfer to Enhanced Teacher (MDT⁺)
 - **Input**: Paired MRI + PET scans
-- **Initialization**: Load pre-trained SMT model
-- **Knowledge Transfer**: Use SMT-Student's enriched MRI feature extractor
+- **Initialization**: Load pre-trained MDT model
+- **Knowledge Transfer**: Use MDT-Student's enriched MRI feature extractor
 - **Goal**: Enhance multi-modal teacher with student's richer MRI knowledge
-- **Result**: SMT⁺ model with improved performance on complete multi-modal data
+- **Result**: MDT⁺ model with improved performance on complete multi-modal data
 
 ---
 
@@ -68,36 +72,36 @@ pip install torch torchvision numpy pandas scikit-learn rich wandb
 
 ### Training Pipeline
 
-#### Step 1: Train SMT (Multi-modal Teacher)
+#### Step 1: Train MDT (Multi-modal Teacher)
 ```bash
-python run_smt.py \
+python run_mdt.py \
     --gpus 0 \
     --server main \
     --epochs 100 \
     --batch_size 32
 ```
 
-#### Step 2: Train SMT-Student (Knowledge Distillation)
+#### Step 2: Train MDT-Student (Knowledge Distillation)
 ```bash
-python run_smt_student.py \
-    --teacher_dir checkpoints/SMT-FBP/YYYY-MM-DD_HH-MM-SS \
+python run_mdt_student.py \
+    --teacher_dir checkpoints/MDT-FBP/YYYY-MM-DD_HH-MM-SS \
     --teacher_position best \
     --gpus 0 \
     --epochs 100 \
     --batch_size 32
 ```
 
-#### Step 3: Train SMT⁺ (Enhanced Multi-modal Model)
+#### Step 3: Train MDT⁺ (Enhanced Multi-modal Model)
 ```bash
-python run_smt_plus.py \
-    --student_dir checkpoints/SMT-Student-FBP/YYYY-MM-DD_HH-MM-SS \
+python run_mdt_plus.py \
+    --student_dir checkpoints/MDT-Student-FBP/YYYY-MM-DD_HH-MM-SS \
     --student_position best \
     --gpus 0 \
     --epochs 100 \
     --batch_size 32
 ```
 
-> **Note**: `run_smt_plus.py` automatically tracks the teacher checkpoint used for student training.
+> **Note**: `run_mdt_plus.py` automatically tracks the teacher checkpoint used for student training.
 
 ### Baseline Models
 
@@ -120,9 +124,9 @@ python run_multi.py --gpus 0
 ├── configs/                        # Configuration files for different tasks
 │   ├── base.py                    # Base configuration class
 │   └── slice/                     # Task-specific configs
-│       ├── smt.py                 # SMT configuration
-│       ├── smt_student.py         # SMT-Student configuration
-│       ├── smt_plus.py            # SMT⁺ configuration
+│       ├── mdt.py                 # MDT configuration
+│       ├── mdt_student.py         # MDT-Student configuration
+│       ├── mdt_plus.py            # MDT⁺ configuration
 │       ├── single.py              # Single-modality baseline config
 │       └── multi.py               # Multi-modality baseline config
 │
@@ -142,9 +146,9 @@ python run_multi.py --gpus 0
 │
 ├── tasks/                         # Training logic for different stages
 │   └── slice/
-│       ├── smt.py                 # SMT training task
-│       ├── smt_student.py         # SMT-Student training task
-│       ├── smt_plus.py            # SMT⁺ training task
+│       ├── mdt.py                 # MDT training task
+│       ├── mdt_student.py         # MDT-Student training task
+│       ├── mdt_plus.py            # MDT⁺ training task
 │       ├── single.py              # Single-modality training
 │       └── multi.py               # Multi-modality baseline training
 │
@@ -156,13 +160,13 @@ python run_multi.py --gpus 0
 │   └── optimization.py            # Optimizers and schedulers
 │
 ├── shell/                         # Shell scripts for batch experiments
-│   ├── run_smt.sh
-│   ├── run_smt_student.sh
-│   └── run_smt_plus.sh
+│   ├── run_mdt.sh
+│   ├── run_mdt_student.sh
+│   └── run_mdt_plus.sh
 │
-├── run_smt.py                     # Main script: Train SMT
-├── run_smt_student.py             # Main script: Train SMT-Student
-├── run_smt_plus.py                # Main script: Train SMT⁺
+├── run_mdt.py                     # Main script: Train MDT
+├── run_mdt_student.py             # Main script: Train MDT-Student
+├── run_mdt_plus.py                # Main script: Train MDT⁺
 ├── run_single.py                  # Main script: Single-modality baseline
 └── run_multi.py                   # Main script: Multi-modality baseline
 ```
@@ -257,7 +261,7 @@ If you use this project in your research, please cite:
 
 ```bibtex
 @article{kwak2025cross,
-  title={A Cross-Modal Mutual Knowledge Distillation Framework for Alzheimer's Disease Diagnosis: Addressing Incomplete Modalities},
+  title={An Incomplete Cross-modal Mutual Knowledge Distillation Framework for Alzheimer's Disease Diagnosis: Addressing Incomplete Modalities},
   author={Kwak, Min Gu and Mao, Lingchao and Zheng, Zhiyang and Su, Yi and Lure, Fleming and Li, Jing},
   journal={IEEE Transactions on Automation Science and Engineering},
   year={2025},

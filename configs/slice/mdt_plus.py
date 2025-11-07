@@ -2,16 +2,16 @@ import argparse
 from configs.base import ConfigBase, str2bool
 
 
-class SMTPlusConfig(ConfigBase):
-    """Configuration for SMT⁺ (SMT Plus) model.
+class MDTPlusConfig(ConfigBase):
+    """Configuration for MDT⁺ (MDT Plus) model.
     
-    SMT⁺ enhances the multi-modal teacher by transferring knowledge from 
-    the SMT-Student's enriched MRI feature extractor, which was trained 
+    MDT⁺ enhances the multi-modal teacher by transferring knowledge from 
+    the MDT-Student's enriched MRI feature extractor, which was trained 
     with more samples (including MRI-only cases).
     """
 
     def __init__(self, args=None, **kwargs):
-        super(SMTPlusConfig, self).__init__(args, **kwargs)
+        super(MDTPlusConfig, self).__init__(args, **kwargs)
 
     @staticmethod
     def data_parser() -> argparse.ArgumentParser:
